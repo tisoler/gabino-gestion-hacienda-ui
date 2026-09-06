@@ -5,6 +5,9 @@ import {
   Users,
   MapPin,
   Fence,
+  PawPrint,
+  Dna,
+  Layers,
   UserCog,
   LayoutDashboard,
   LogOut,
@@ -12,6 +15,7 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Sun,
   Moon,
   Monitor,
@@ -29,7 +33,7 @@ interface SidebarProps {
 }
 
 interface NavItem {
-  to: string
+  to?: string
   label: string
   icon: LucideIcon
   permission?: string
@@ -37,6 +41,8 @@ interface NavItem {
   soloSysAdmin?: boolean
   /** Oculto para el rol cliente (aunque tenga el permiso). */
   ocultarParaCliente?: boolean
+  /** Submenú: el item padre no navega, despliega sus hijos. */
+  subitems?: NavItem[]
 }
 
 const THEME_OPTIONS: { mode: ThemeMode; label: string; icon: LucideIcon }[] = [
@@ -56,6 +62,15 @@ const NAV_GROUPS: NavItem[][] = [
   [
     { to: '/lotes', label: 'Lotes', icon: MapPin, permission: 'lectura:lote' },
     { to: '/corrales', label: 'Corrales', icon: Fence, permission: 'lectura:corral', ocultarParaCliente: true },
+    {
+      label: 'Animales',
+      icon: PawPrint,
+      soloSysAdmin: true,
+      subitems: [
+        { to: '/animales/razas', label: 'Razas', icon: Dna },
+        { to: '/animales/categorias', label: 'Categorías', icon: Layers },
+      ],
+    },
     { to: '/usuarios', label: 'Usuarios', icon: UserCog, soloSysAdmin: true },
   ],
   [
@@ -69,12 +84,18 @@ interface SidebarContentProps extends SidebarProps {
 
 function SidebarContent({ isCollapsed, setIsCollapsed, onCloseMobile }: SidebarContentProps) {
   const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false)
+  const [subMenuAbierto, setSubMenuAbierto] = useState<Record<string, boolean>>({})
   const { user, logout, permisos, isSysAdmin, isCliente } = useAuth()
   const { mode, setMode } = useTheme()
 
   const roleLabel = getRoleLabel(user?.roles)
 
   const hasPermission = (permission: string) => permisos.includes(permission)
+
+  const visible = (item: NavItem) =>
+    (!item.permission || hasPermission(item.permission)) &&
+    !(item.soloSysAdmin && !isSysAdmin) &&
+    !(item.ocultarParaCliente && isCliente)
 
   const activeLink = ({ isActive }: { isActive: boolean }) =>
     `flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors ${isActive
@@ -115,28 +136,64 @@ function SidebarContent({ isCollapsed, setIsCollapsed, onCloseMobile }: SidebarC
       {/* Navigation */}
       <nav className="flex-1 p-2.5 space-y-1 overflow-y-auto overflow-x-hidden">
         {NAV_GROUPS.map((group, gi) => {
-          const items = group.filter(
-            (item) =>
-              (!item.permission || hasPermission(item.permission)) &&
-              !(item.soloSysAdmin && !isSysAdmin) &&
-              !(item.ocultarParaCliente && isCliente),
-          )
+          const items = group.filter(visible)
           if (items.length === 0) return null
           const showSeparator = gi > 0
           return (
             <div key={gi} className={`space-y-0.5 ${showSeparator ? 'pt-2.5 mt-1 border-t border-sidebar-border' : ''}`}>
-              {items.map((item) => (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  className={activeLink}
-                  onClick={() => onCloseMobile?.()}
-                  title={isCollapsed ? item.label : undefined}
-                >
-                  <item.icon className="size-[18px] shrink-0" strokeWidth={1.75} />
-                  {!isCollapsed && <span className="truncate">{item.label}</span>}
-                </NavLink>
-              ))}
+              {items.map((item) => {
+                const subitems = item.subitems?.filter(visible) ?? []
+                if (subitems.length > 0) {
+                  // Submenú: padre con toggle. Colapsado muestra los hijos
+                  // como fichas de sólo icono.
+                  const abierto = subMenuAbierto[item.label] ?? true
+                  return (
+                    <div key={item.label} className="space-y-0.5">
+                      {!isCollapsed && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setSubMenuAbierto((s) => ({ ...s, [item.label]: !(s[item.label] ?? true) }))
+                          }
+                          aria-expanded={abierto}
+                          className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors cursor-pointer"
+                        >
+                          <item.icon className="size-[18px] shrink-0" strokeWidth={1.75} />
+                          <span className="truncate flex-1 text-left">{item.label}</span>
+                          <ChevronDown className={`size-3.5 shrink-0 transition-transform ${abierto ? '' : '-rotate-90'}`} strokeWidth={2} />
+                        </button>
+                      )}
+                      {(isCollapsed || abierto) &&
+                        subitems.map((sub) => (
+                          <NavLink
+                            key={sub.to}
+                            to={sub.to ?? '#'}
+                            className={({ isActive }) =>
+                              `${activeLink({ isActive })} ${isCollapsed ? '' : 'pl-9'}`
+                            }
+                            onClick={() => onCloseMobile?.()}
+                            title={isCollapsed ? sub.label : undefined}
+                          >
+                            <sub.icon className="size-[18px] shrink-0" strokeWidth={1.75} />
+                            {!isCollapsed && <span className="truncate">{sub.label}</span>}
+                          </NavLink>
+                        ))}
+                    </div>
+                  )
+                }
+                return (
+                  <NavLink
+                    key={item.to}
+                    to={item.to ?? '#'}
+                    className={activeLink}
+                    onClick={() => onCloseMobile?.()}
+                    title={isCollapsed ? item.label : undefined}
+                  >
+                    <item.icon className="size-[18px] shrink-0" strokeWidth={1.75} />
+                    {!isCollapsed && <span className="truncate">{item.label}</span>}
+                  </NavLink>
+                )
+              })}
             </div>
           )
         })}
@@ -259,7 +316,7 @@ export function Sidebar({ isCollapsed, setIsCollapsed }: SidebarProps) {
       {/* Sidebar Container */}
       <aside
         className={`fixed left-0 top-0 bottom-0 z-50 transition-[width,transform] duration-200 ease-out
-          ${isCollapsed ? 'w-16' : 'w-52'}
+          ${isCollapsed ? 'w-20' : 'w-52'}
           ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
         `}
       >

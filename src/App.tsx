@@ -10,6 +10,7 @@ import Clientes from './pages/Clientes'
 import Lotes from './pages/Lotes'
 import LoteDetalle from './pages/LoteDetalle'
 import Corrales from './pages/Corrales'
+import CatalogoAdmin from './pages/CatalogoAdmin'
 import Usuarios from './pages/Usuarios'
 import Configuracion from './pages/Configuracion'
 
@@ -30,6 +31,14 @@ function App() {
                 <Route path="/lotes/nueva" element={<LoteDetalle />} />
                 <Route path="/lotes/:id" element={<LoteDetalle />} />
                 <Route path="/corrales" element={<Corrales />} />
+                <Route
+                  path="/animales/razas"
+                  element={<CatalogoAdmin tipo="raza" titulo="Razas de animales" nombreValor="raza" />}
+                />
+                <Route
+                  path="/animales/categorias"
+                  element={<CatalogoAdmin tipo="categoria" titulo="Categorías de animales" nombreValor="categoría" />}
+                />
                 <Route path="/usuarios" element={<Usuarios />} />
                 <Route path="/configuracion" element={<Configuracion />} />
                 <Route path="*" element={<Navigate to="/" replace />} />

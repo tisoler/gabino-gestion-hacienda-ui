@@ -53,6 +53,13 @@ export const ESTADO_ANIMAL_LABELS: Record<string, string> = {
   muerto: 'Muerto',
 }
 
+/** Tipos de movimiento sanitario del animal (historial). */
+export const TIPOS_MOVIMIENTO: Record<string, string> = {
+  a_enfermeria: 'Enviado a enfermería',
+  de_enfermeria: 'Alta de enfermería',
+  cambio_estado: 'Cambio de estado',
+}
+
 /**
  * Paleta de colores por lote (replica la PALETA_LOTE del server). El mapa de
  * corrales pinta la ficha de cada animal con el color de su lote.

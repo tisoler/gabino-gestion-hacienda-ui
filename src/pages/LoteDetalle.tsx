@@ -11,6 +11,7 @@ import {
   X,
   AlertCircle,
   CheckCircle2,
+  History,
   Stethoscope,
   Undo2,
 } from 'lucide-react'
@@ -19,6 +20,14 @@ import { useAuth } from '../contexts/auth-context'
 import { useVolver } from '../lib/navegacion'
 import { Table } from '../components/Table'
 import SelectAutocomplete from '../components/SelectAutocomplete'
+import CatalogoSelect from '../components/CatalogoSelect'
+import {
+  CambioEstadoModal,
+  EnviarEnfermeriaModal,
+  MovimientosModal,
+  TraerEnfermeriaModal,
+  type EnfermeriaOpcion,
+} from '../components/AnimalModals'
 import {
   CORRAL_TIPOS,
   ESTADO_ANIMAL_LABELS,
@@ -32,6 +41,10 @@ export interface Animal {
   nAnimal: number | null
   sexo: string | null
   pelaje: string | null
+  idRaza: number | null
+  razaNombre: string | null
+  idCategoria: number | null
+  categoriaNombre: string | null
   fechaPesajeIni: string | null
   pesoInicial: number | null
   desbasteIni: number
@@ -55,6 +68,10 @@ export interface LoteDetalle {
   fecha: string | null
   idCliente: string | null
   nombreCliente: string | null
+  idProveedor: number | null
+  nombreProveedor: string | null
+  idLugarOrigen: number | null
+  nombreLugarOrigen: string | null
   idCorral: number | null
   corralNombre: string | null
   color: string | null
@@ -76,6 +93,7 @@ interface Cliente {
   uid: string
   nombreUsuario: string | null
   email: string | null
+  rol: string | null
 }
 
 const aInputDate = (v?: string | null): string => {
@@ -113,11 +131,11 @@ export default function LoteDetalle() {
   // Los clientes ven el lote en modo sólo lectura (sin escritura:lote).
   const puedeEscribir = permisos.includes('escritura:lote')
 
-  // El picker de clientes requiere lectura:cliente (anfitrión/sys-admin);
-  // el operario crea lotes sin dueño.
+  // El picker de titulares (clientes + anfitrión) requiere lectura:cliente
+  // (anfitrión/sys-admin); el operario crea lotes sin dueño.
   const puedeVerClientes = permisos.includes('lectura:cliente')
   const { data: clientes } = useSWR<Cliente[]>(
-    puedeVerClientes ? '/clientes' : null,
+    puedeVerClientes ? '/clientes/titulares' : null,
     fetcher,
     { revalidateOnFocus: false },
   )
@@ -135,8 +153,13 @@ export default function LoteDetalle() {
   )
 
   const [animalModal, setAnimalModal] = useState<{ open: boolean; animal?: Animal }>({ open: false })
-  const [enfPicker, setEnfPicker] = useState<{ open: boolean; animal?: Animal } | null>(null)
+  const [enviarModal, setEnviarModal] = useState<{ animal: Animal; enfermerias: EnfermeriaOpcion[] } | null>(null)
+  const [traerModal, setTraerModal] = useState<Animal | null>(null)
+  const [estadoModal, setEstadoModal] = useState<{ animal: Animal; estado: string } | null>(null)
+  const [movModal, setMovModal] = useState<Animal | null>(null)
   const [error, setError] = useState('')
+
+  const labelAnimal = (a: Animal) => `Animal ${a.nAnimal ?? a.id}`
 
   const handleCrearLote = async (vals: LoteFormSubmit) => {
     const { data } = await api.post<{ id: number }>('/lotes', {
@@ -144,6 +167,8 @@ export default function LoteDetalle() {
       fecha: vals.fecha || undefined,
       descripcion: vals.descripcion || undefined,
       idCliente: vals.idCliente || undefined,
+      idProveedor: vals.idProveedor ? Number(vals.idProveedor) : undefined,
+      idLugarOrigen: vals.idLugarOrigen ? Number(vals.idLugarOrigen) : undefined,
       idCorral: vals.idCorral ? Number(vals.idCorral) : undefined,
       color: vals.color || undefined,
     })
@@ -158,6 +183,8 @@ export default function LoteDetalle() {
       fecha: vals.fecha || null,
       descripcion: vals.descripcion || null,
       idCliente: vals.idCliente || null,
+      idProveedor: vals.idProveedor ? Number(vals.idProveedor) : null,
+      idLugarOrigen: vals.idLugarOrigen ? Number(vals.idLugarOrigen) : null,
       idCorral: vals.idCorral ? Number(vals.idCorral) : null,
       color: vals.color || null,
     })
@@ -182,58 +209,93 @@ export default function LoteDetalle() {
     await mutateLote()
   }
 
+  /** Toggle de estado: a enfermo/muerto pide la causa (modal). */
   const handleEstado = async (a: Animal, estado: string) => {
     if (!lote || a.estado === estado) return
+    setError('')
+    if (estado === 'enfermo' || estado === 'muerto') {
+      setEstadoModal({ animal: a, estado })
+      return
+    }
     try {
-      await api.patch(`/lotes/${lote.id}/animales/${a.id}`, { estado })
+      await aplicarEstado(a, estado)
+    } catch {
+      /* el error ya se mostró en el banner */
+    }
+  }
+
+  const aplicarEstado = async (a: Animal, estado: string, motivoId?: number) => {
+    if (!lote) return
+    try {
+      await api.patch(`/lotes/${lote.id}/animales/${a.id}`, {
+        estado,
+        ...(motivoId ? { idMotivo: motivoId } : {}),
+      })
       await mutateLote()
+      await mutate('/corrales/mapa')
     } catch (err) {
       console.error(err)
       setError(extractMsg(err, 'No se pudo actualizar el estado.'))
+      throw err
     }
   }
 
-  const enviarAEnfermeria = async (a: Animal, idCorral?: number) => {
+  const handleEnfermeria = async (
+    a: Animal,
+    motivoId: number,
+    idCorral?: number,
+  ) => {
     if (!lote) return
     try {
-      await api.post(`/lotes/${lote.id}/animales/${a.id}/enfermeria`, idCorral ? { idCorral } : {})
+      await api.post(`/lotes/${lote.id}/animales/${a.id}/enfermeria`, {
+        idMotivo: motivoId,
+        ...(idCorral ? { idCorral } : {}),
+      })
+      setEnviarModal(null)
       await mutateLote()
+      await mutate('/corrales/mapa')
     } catch (err) {
       console.error(err)
       setError(extractMsg(err, 'No se pudo enviar a enfermería.'))
+      throw err
     }
   }
 
-  const traerDeEnfermeria = async (a: Animal) => {
+  const handleTraer = async (
+    a: Animal,
+    estado: 'sano' | 'muerto',
+    motivoId?: number,
+  ) => {
     if (!lote) return
     try {
-      await api.delete(`/lotes/${lote.id}/animales/${a.id}/enfermeria`)
+      await api.delete(`/lotes/${lote.id}/animales/${a.id}/enfermeria`, {
+        data: { estado, ...(motivoId ? { idMotivo: motivoId } : {}) },
+      })
+      setTraerModal(null)
       await mutateLote()
+      await mutate('/corrales/mapa')
     } catch (err) {
       console.error(err)
-      setError(extractMsg(err, 'No se pudo traer del enfermería.'))
+      setError(extractMsg(err, 'No se pudo traer de enfermería.'))
+      throw err
     }
   }
 
-  /** Toggle enfermería: 0 = error, 1 = directo, N = picker. */
+  /** Toggle enfermería: enviar (motivo obligatorio) o traer (estado de salida). */
   const handleEnfermeriaToggle = async (a: Animal) => {
     if (!lote) return
     setError('')
     if (a.idCorralEnfermeria != null) {
-      await traerDeEnfermeria(a)
+      setTraerModal(a)
       return
     }
     try {
-      const { data } = await api.get<{ id: number; nombre: string }[]>('/corrales/enfermerias')
+      const { data } = await api.get<EnfermeriaOpcion[]>('/corrales/enfermerias')
       if (data.length === 0) {
         setError('No hay un corral de enfermería activo en la empresa. Creá uno en Corrales.')
         return
       }
-      if (data.length === 1) {
-        await enviarAEnfermeria(a)
-        return
-      }
-      setEnfPicker({ open: true, animal: a })
+      setEnviarModal({ animal: a, enfermerias: data })
     } catch (err) {
       console.error(err)
       setError(extractMsg(err, 'No se pudo listar las enfermerías.'))
@@ -332,6 +394,8 @@ export default function LoteDetalle() {
                 },
                 { header: 'Sexo', accessor: (a) => <span className="text-muted-foreground">{a.sexo || '—'}</span> },
                 { header: 'Pelaje', accessor: (a) => <span className="text-muted-foreground">{a.pelaje || '—'}</span> },
+                { header: 'Raza', accessor: (a) => <span className="text-muted-foreground">{a.razaNombre || '—'}</span> },
+                { header: 'Categoría', accessor: (a) => <span className="text-muted-foreground">{a.categoriaNombre || '—'}</span> },
                 { header: 'Peso ini.', accessor: (a) => <span className="text-muted-foreground">{fmtNum(a.pesoInicial)}</span> },
                 { header: 'Neto ini.', accessor: (a) => <span className="text-muted-foreground">{fmtNum(a.pesoNetoIni)}</span> },
                 { header: 'Peso fin.', accessor: (a) => <span className="text-muted-foreground">{fmtNum(a.pesoFinal)}</span> },
@@ -340,37 +404,47 @@ export default function LoteDetalle() {
                 { header: 'Aum. diario', accessor: (a) => <span className="text-muted-foreground">{fmtNum(a.aumDiario, 4)}</span> },
                 {
                   header: 'Estado',
-                  accessor: (a) =>
-                    puedeEscribir ? (
-                      <div className="inline-flex rounded-md border border-border bg-muted/40 p-0.5">
-                        {ESTADOS_ANIMAL.map((e) => (
-                          <button
-                            key={e}
-                            onClick={() => handleEstado(a, e)}
-                            title={ESTADO_ANIMAL_LABELS[e]}
-                            className={`px-2 py-1 rounded text-[10px] font-medium transition-colors cursor-pointer ${
-                              a.estado === e
-                                ? e === 'muerto'
-                                  ? 'bg-muted-foreground text-background'
-                                  : e === 'enfermo'
-                                    ? 'bg-warning text-warning-foreground'
-                                    : 'bg-success text-success-foreground'
-                                : 'text-muted-foreground hover:text-foreground'
-                            }`}
-                          >
-                            {ESTADO_ANIMAL_LABELS[e]}
-                          </button>
-                        ))}
-                      </div>
-                    ) : (
-                      <span
-                        className={`inline-flex text-[10px] font-semibold uppercase tracking-wide rounded-full px-2 py-0.5 ${
-                          ESTADO_BADGE[a.estado] ?? 'text-muted-foreground bg-muted'
-                        }`}
+                  accessor: (a) => (
+                    <div className="flex items-center gap-1.5">
+                      {puedeEscribir ? (
+                        <div className="inline-flex rounded-md border border-border bg-muted/40 p-0.5">
+                          {ESTADOS_ANIMAL.map((e) => (
+                            <button
+                              key={e}
+                              onClick={() => handleEstado(a, e)}
+                              title={ESTADO_ANIMAL_LABELS[e]}
+                              className={`px-2 py-1 rounded text-[10px] font-medium transition-colors cursor-pointer ${
+                                a.estado === e
+                                  ? e === 'muerto'
+                                    ? 'bg-muted-foreground text-background'
+                                    : e === 'enfermo'
+                                      ? 'bg-warning text-warning-foreground'
+                                      : 'bg-success text-success-foreground'
+                                  : 'text-muted-foreground hover:text-foreground'
+                              }`}
+                            >
+                              {ESTADO_ANIMAL_LABELS[e]}
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <span
+                          className={`inline-flex text-[10px] font-semibold uppercase tracking-wide rounded-full px-2 py-0.5 ${
+                            ESTADO_BADGE[a.estado] ?? 'text-muted-foreground bg-muted'
+                          }`}
+                        >
+                          {ESTADO_ANIMAL_LABELS[a.estado] ?? a.estado}
+                        </span>
+                      )}
+                      <button
+                        onClick={() => setMovModal(a)}
+                        title="Ver movimientos del animal"
+                        className="p-1.5 rounded-md text-muted-foreground hover:bg-primary-soft hover:text-primary transition-colors cursor-pointer"
                       >
-                        {ESTADO_ANIMAL_LABELS[a.estado] ?? a.estado}
-                      </span>
-                    ),
+                        <History className="size-4" strokeWidth={1.75} />
+                      </button>
+                    </div>
+                  ),
                 },
                 ...(puedeEscribir
                   ? [
@@ -442,13 +516,44 @@ export default function LoteDetalle() {
         />
       )}
 
-      {enfPicker?.open && lote && (
-        <EnfermeriaPickerModal
-          onClose={() => setEnfPicker(null)}
-          onOk={async (idCorral) => {
-            if (enfPicker.animal) await enviarAEnfermeria(enfPicker.animal, idCorral)
-            setEnfPicker(null)
+      {enviarModal && (
+        <EnviarEnfermeriaModal
+          animalLabel={labelAnimal(enviarModal.animal)}
+          enfermerias={enviarModal.enfermerias}
+          onClose={() => setEnviarModal(null)}
+          onOk={async (motivoId, idCorral) => {
+            await handleEnfermeria(enviarModal.animal, motivoId, idCorral)
           }}
+        />
+      )}
+
+      {traerModal && (
+        <TraerEnfermeriaModal
+          animalLabel={labelAnimal(traerModal)}
+          onClose={() => setTraerModal(null)}
+          onOk={async (estado, motivoId) => {
+            await handleTraer(traerModal, estado, motivoId)
+          }}
+        />
+      )}
+
+      {estadoModal && (
+        <CambioEstadoModal
+          animalLabel={labelAnimal(estadoModal.animal)}
+          estado={estadoModal.estado}
+          onClose={() => setEstadoModal(null)}
+          onOk={async (motivoId) => {
+            await aplicarEstado(estadoModal.animal, estadoModal.estado, motivoId)
+            setEstadoModal(null)
+          }}
+        />
+      )}
+
+      {movModal && lote && (
+        <MovimientosModal
+          loteId={lote.id}
+          animal={{ id: movModal.id, nAnimal: movModal.nAnimal }}
+          onClose={() => setMovModal(null)}
         />
       )}
     </div>
@@ -460,6 +565,8 @@ interface LoteFormSubmit {
   fecha: string
   descripcion: string
   idCliente: string
+  idProveedor: string
+  idLugarOrigen: string
   idCorral: string
   color: string
 }
@@ -478,11 +585,17 @@ function LoteForm({ lote, clientes, corrals, submitLabel, readOnly, onSubmit }: 
   const [fecha, setFecha] = useState(aInputDate(lote?.fecha))
   const [descripcion, setDescripcion] = useState(lote?.descripcion ?? '')
   const [idCliente, setIdCliente] = useState<string | number>(lote?.idCliente ?? '')
+  const [idProveedor, setIdProveedor] = useState<string | number>(lote?.idProveedor ?? '')
+  const [idLugarOrigen, setIdLugarOrigen] = useState<string | number>(lote?.idLugarOrigen ?? '')
   const [idCorral, setIdCorral] = useState<string | number>(lote?.idCorral ?? '')
   const [color, setColor] = useState(lote?.color ?? '')
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<'ok' | 'error' | null>(null)
   const [mensaje, setMensaje] = useState('')
+
+  const rolByUid = new Map<string, string | null>(
+    clientes.map((c) => [c.uid, c.rol]),
+  )
 
   // Comunes activos: libres, o ya ocupados por este lote.
   const corralsComunes = corrals.filter(
@@ -507,6 +620,8 @@ function LoteForm({ lote, clientes, corrals, submitLabel, readOnly, onSubmit }: 
         fecha,
         descripcion,
         idCliente: String(idCliente),
+        idProveedor: String(idProveedor),
+        idLugarOrigen: String(idLugarOrigen),
         idCorral: String(idCorral),
         color,
       })
@@ -546,8 +661,16 @@ function LoteForm({ lote, clientes, corrals, submitLabel, readOnly, onSubmit }: 
             <dd className="text-foreground">{lote.corralNombre || 'Sin corral'}</dd>
           </div>
           <div>
-            <dt className="text-muted-foreground">Cliente (dueño)</dt>
+            <dt className="text-muted-foreground">Titular (cliente/anfitrión)</dt>
             <dd className="text-foreground">{lote.nombreCliente || '—'}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Proveedor</dt>
+            <dd className="text-foreground">{lote.nombreProveedor || '—'}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Lugar de origen</dt>
+            <dd className="text-foreground">{lote.nombreLugarOrigen || '—'}</dd>
           </div>
           {lote.descripcion && (
             <div className="sm:col-span-2">
@@ -616,15 +739,39 @@ function LoteForm({ lote, clientes, corrals, submitLabel, readOnly, onSubmit }: 
         {clientes.length > 0 && (
           <div className="min-w-0">
             <SelectAutocomplete
-              label="Cliente (dueño)"
-              placeholder="Seleccionar cliente..."
+              label="Titular (cliente o anfitrión)"
+              placeholder="Seleccionar titular..."
               value={idCliente}
               onChange={setIdCliente}
               options={clientes.map((c) => ({ value: c.uid, label: c.nombreUsuario || c.email || c.uid }))}
               clearable
+              renderTag={(o) =>
+                rolByUid.get(String(o.value)) === 'anfitrion' ? (
+                  <span className="shrink-0 text-[9px] font-semibold uppercase tracking-wide text-primary bg-primary-soft rounded-full px-1.5 py-0.5">
+                    Anfitrión
+                  </span>
+                ) : null
+              }
             />
           </div>
         )}
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <CatalogoSelect
+          tipo="proveedor"
+          label="Proveedor"
+          placeholder="Buscar o agregar proveedor..."
+          value={idProveedor}
+          onChange={setIdProveedor}
+        />
+        <CatalogoSelect
+          tipo="lugar_origen"
+          label="Lugar de origen"
+          placeholder="Buscar o agregar lugar..."
+          value={idLugarOrigen}
+          onChange={setIdLugarOrigen}
+        />
       </div>
 
       <div className="space-y-1.5">
@@ -684,84 +831,12 @@ function LoteForm({ lote, clientes, corrals, submitLabel, readOnly, onSubmit }: 
   )
 }
 
-/** Picker cuando la empresa tiene más de una enfermería activa. */
-function EnfermeriaPickerModal({
-  onClose,
-  onOk,
-}: {
-  onClose: () => void
-  onOk: (idCorral: number) => Promise<void>
-}) {
-  const { data: enfermerias } = useSWR<{ id: number; nombre: string }[]>(
-    '/corrales/enfermerias',
-    fetcher,
-  )
-  const [sel, setSel] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
-
-  const submit = async () => {
-    if (!sel) {
-      setError('Elegí un corral de enfermería.')
-      return
-    }
-    setBusy(true)
-    setError('')
-    try {
-      await onOk(Number(sel))
-    } catch (err) {
-      console.error(err)
-      setError(extractMsg(err, 'No se pudo enviar a enfermería.'))
-      setBusy(false)
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-foreground/40 backdrop-blur-sm">
-      <div className="w-full max-w-md bg-card border border-border rounded-lg shadow-xl p-6 space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-base font-semibold text-foreground">Enviar a enfermería</h2>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors cursor-pointer"
-            aria-label="Cerrar"
-          >
-            <X className="size-4" strokeWidth={2} />
-          </button>
-        </div>
-        <SelectAutocomplete
-          label="Corral de enfermería"
-          placeholder="Seleccionar..."
-          value={sel}
-          onChange={(v) => setSel(String(v))}
-          options={(enfermerias || []).map((e) => ({ value: e.id, label: e.nombre }))}
-        />
-        {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-        <div className="flex justify-end gap-2 pt-1">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 rounded-md text-sm font-medium text-muted-foreground hover:bg-accent transition-colors cursor-pointer"
-          >
-            Cancelar
-          </button>
-          <button
-            onClick={submit}
-            disabled={busy}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium shadow-sm hover:opacity-90 transition-opacity disabled:opacity-50 cursor-pointer"
-          >
-            {busy ? <Loader2 className="size-4 animate-spin" /> : <Stethoscope className="size-4" strokeWidth={2} />}
-            Enviar
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 interface AnimalFormValues {
   nAnimal?: number
   sexo?: string
   pelaje?: string
+  idRaza?: number | null
+  idCategoria?: number | null
   fechaPesajeIni?: string
   pesoInicial?: number
   desbasteIni?: number
@@ -783,6 +858,8 @@ function AnimalModal({
   const [nAnimal, setNAnimal] = useState(animal?.nAnimal?.toString() ?? '')
   const [sexo, setSexo] = useState(animal?.sexo ?? '')
   const [pelaje, setPelaje] = useState(animal?.pelaje ?? '')
+  const [idRaza, setIdRaza] = useState<string | number>(animal?.idRaza ?? '')
+  const [idCategoria, setIdCategoria] = useState<string | number>(animal?.idCategoria ?? '')
   const [fechaPesajeIni, setFechaPesajeIni] = useState(aInputDate(animal?.fechaPesajeIni))
   const [pesoInicial, setPesoInicial] = useState(animal?.pesoInicial?.toString() ?? '')
   const [desbasteIni, setDesbasteIni] = useState(animal?.desbasteIni?.toString() ?? '')
@@ -806,6 +883,8 @@ function AnimalModal({
         nAnimal: nAnimal.trim() ? parseInt(nAnimal, 10) : undefined,
         sexo: sexo || undefined,
         pelaje: pelaje.trim() || undefined,
+        idRaza: idRaza === '' ? null : Number(idRaza),
+        idCategoria: idCategoria === '' ? null : Number(idCategoria),
         fechaPesajeIni: fechaPesajeIni || undefined,
         pesoInicial: pesoInicial.trim() ? toNum(pesoInicial) : undefined,
         desbasteIni: desbasteIni.trim() ? toNum(desbasteIni) : undefined,
@@ -861,6 +940,23 @@ function AnimalModal({
             <label className="text-xs font-medium text-foreground">Pelaje</label>
             <input type="text" value={pelaje} onChange={(e) => setPelaje(e.target.value)} className={inputCls} placeholder="Ej: Colorado" />
           </div>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <CatalogoSelect
+            tipo="raza"
+            label="Raza"
+            placeholder="Buscar o agregar raza..."
+            value={idRaza}
+            onChange={setIdRaza}
+          />
+          <CatalogoSelect
+            tipo="categoria"
+            label="Categoría"
+            placeholder="Buscar o agregar categoría..."
+            value={idCategoria}
+            onChange={setIdCategoria}
+          />
         </div>
 
         <div className="grid gap-3 sm:grid-cols-3">

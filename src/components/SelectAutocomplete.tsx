@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { Check, ChevronDown, Search, X } from 'lucide-react'
+import { Check, ChevronDown, Loader2, Plus, Search, X } from 'lucide-react'
 
 export interface SelectAutocompleteOption {
   value: string | number
@@ -34,6 +34,18 @@ interface SelectAutocompleteProps {
   clearable?: boolean
   /** Etiqueta opcional junto a cada opción. */
   renderTag?: (option: SelectAutocompleteOption) => ReactNode
+  /**
+   * Muestra el botón "Agregar" cuando la búsqueda no coincide (case-insensitive)
+   * con ninguna opción. Requiere `onCreate`.
+   */
+  allowCreate?: boolean
+  /**
+   * Crea el valor nuevo a partir del texto buscado. Devuelve el `value` de la
+   * opción recién creada (que se selecciona automáticamente).
+   */
+  onCreate?: (nombre: string) => Promise<string | number>
+  /** Texto del botón de alta. Default: Agregar "<valor>". */
+  createLabel?: (nombre: string) => string
 }
 
 const DEFAULT_SORT: SelectAutocompleteSort = { by: 'alfabetico', direction: 'asc' }
@@ -52,9 +64,14 @@ export default function SelectAutocomplete({
   className,
   clearable = false,
   renderTag,
+  allowCreate = false,
+  onCreate,
+  createLabel,
 }: SelectAutocompleteProps) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
+  const [creating, setCreating] = useState(false)
+  const [createError, setCreateError] = useState('')
   const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLDivElement>(null)
@@ -70,6 +87,33 @@ export default function SelectAutocomplete({
     if (!q) return sorted
     return sorted.filter((o) => o.label.toLowerCase().includes(q))
   }, [sorted, search])
+
+  // "Agregar" disponible cuando lo ingresado no coincide (case-insensitive)
+  // con ninguna opción existente.
+  const busqueda = search.trim()
+  const coincideExacto = useMemo(() => {
+    const s = busqueda.toLowerCase()
+    if (!s) return true
+    return sorted.some((o) => o.label.trim().toLowerCase() === s)
+  }, [sorted, busqueda])
+  const mostrarCrear = allowCreate && !!onCreate && busqueda.length > 0 && !coincideExacto
+
+  const handleCreate = async () => {
+    if (!onCreate || !busqueda || creating) return
+    setCreating(true)
+    setCreateError('')
+    try {
+      const nuevo = await onCreate(busqueda)
+      select(nuevo)
+    } catch (err) {
+      const msg =
+        (err as { response?: { data?: { message?: string } } })?.response?.data
+          ?.message || 'No se pudo agregar el valor.'
+      setCreateError(msg)
+    } finally {
+      setCreating(false)
+    }
+  }
 
   // Auto-selección cuando hay una sola opción.
   useEffect(() => {
@@ -145,9 +189,16 @@ export default function SelectAutocomplete({
               autoFocus
               type="text"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => {
+                setSearch(e.target.value)
+                setCreateError('')
+              }}
               onKeyDown={(e) => {
                 if (e.key === 'Escape') setOpen(false)
+                if (e.key === 'Enter' && mostrarCrear) {
+                  e.preventDefault()
+                  void handleCreate()
+                }
               }}
               placeholder="Buscar..."
               className="w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
@@ -155,7 +206,9 @@ export default function SelectAutocomplete({
           </div>
           <div className="max-h-56 overflow-y-auto py-1">
             {filtered.length === 0 ? (
-              <p className="px-3 py-2 text-sm text-muted-foreground">{emptyMessage}</p>
+              !mostrarCrear && (
+                <p className="px-3 py-2 text-sm text-muted-foreground">{emptyMessage}</p>
+              )
             ) : (
               filtered.map((o) => {
                 const isSelected = o.value === value
@@ -179,6 +232,28 @@ export default function SelectAutocomplete({
               })
             )}
           </div>
+          {mostrarCrear && (
+            <div className="border-t border-border p-2 space-y-1">
+              <button
+                type="button"
+                onClick={handleCreate}
+                disabled={creating}
+                className="w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-sm font-medium text-primary bg-primary-soft hover:opacity-90 transition-opacity disabled:opacity-50 cursor-pointer"
+              >
+                {creating ? (
+                  <Loader2 className="size-4 animate-spin" strokeWidth={2} />
+                ) : (
+                  <Plus className="size-4" strokeWidth={2} />
+                )}
+                <span className="truncate">
+                  {createLabel ? createLabel(busqueda) : `Agregar "${busqueda}"`}
+                </span>
+              </button>
+              {createError && (
+                <p role="alert" className="text-xs text-destructive px-1">{createError}</p>
+              )}
+            </div>
+          )}
         </div>,
         document.body,
       )

@@ -1,10 +1,14 @@
 import { useRef, useState } from 'react'
 import useSWR, { useSWRConfig } from 'swr'
-import { useNavigate } from 'react-router-dom'
 import { Loader2, AlertCircle } from 'lucide-react'
 import api, { fetcher } from '../lib/api'
 import { useAuth } from '../contexts/auth-context'
 import { CORRAL_TIPOS, ESTADO_ANIMAL_LABELS, getLoteColor } from '../constantes'
+import {
+  EnviarEnfermeriaModal,
+  MovimientosModal,
+  TraerEnfermeriaModal,
+} from './AnimalModals'
 
 interface TokenAnimal {
   animalId: number
@@ -45,7 +49,6 @@ interface DragItem {
  */
 export function CorralMapa() {
   const { permisos } = useAuth()
-  const navigate = useNavigate()
   const { mutate } = useSWRConfig()
 
   const canVer = permisos.includes('lectura:corral')
@@ -61,7 +64,15 @@ export function CorralMapa() {
   const [overCorralId, setOverCorralId] = useState<number | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-  // HTML5 DnD puede disparar click tras soltar: se suprime la navegación breve.
+  // El drop NO mueve directo: abre el modal de enfermería (motivo obligatorio)
+  // o el de alta de enfermería (estado de salida), según el destino.
+  const [pendiente, setPendiente] = useState<
+    | { tipo: 'a_enfermeria'; item: DragItem; destino: CorralMapaItem }
+    | { tipo: 'de_enfermeria'; item: DragItem; destino: CorralMapaItem }
+    | null
+  >(null)
+  const [movAnimal, setMovAnimal] = useState<TokenAnimal | null>(null)
+  // HTML5 DnD puede disparar click tras soltar: se suprime el modal breve.
   const suppressClickRef = useRef(false)
 
   const destinoValido = (item: DragItem, c: CorralMapaItem): boolean => {
@@ -82,53 +93,49 @@ export function CorralMapa() {
     }, 50)
   }
 
-  /**
- * Drop con UI OPTIMISTA: la ficha se mueve al destino de inmediato sobre la
- * cache de SWR; si la persistencia falla, se revierte al snapshot original.
- * En éxito se revalida para quedar con la verdad del server.
- */
-const handleDrop = async (c: CorralMapaItem) => {
+  const handleDrop = (c: CorralMapaItem) => {
     const item = drag
     clearDrag()
     if (!item || !destinoValido(item, c)) return
-
-    const previous = corrales ?? []
-    const token = previous.flatMap((s) => s.animales).find((a) => a.animalId === item.animalId)
-    if (!token) return
-
-    const optimistic: CorralMapaItem[] = previous.map((s) => {
-      // Sacar la ficha de todos los corrales y soltarla en el destino.
-      const sinFicha = s.animales.filter((a) => a.animalId !== item.animalId)
-      return {
-        ...s,
-        animales: s.id === c.id ? [...sinFicha, token] : sinFicha,
-      }
-    })
-
     setError('')
-    await mutate('/corrales/mapa', optimistic, { revalidate: false })
+    setPendiente({
+      tipo: c.tipo === CORRAL_TIPOS.ENFERMERIA ? 'a_enfermeria' : 'de_enfermeria',
+      item,
+      destino: c,
+    })
+  }
 
+  /** Persiste el movimiento confirmado en el modal y revalida el mapa. */
+  const confirmar = async (fn: (base: string) => Promise<unknown>) => {
+    if (!pendiente) return
+    const { item } = pendiente
+    const base = `/lotes/${item.loteId}/animales/${item.animalId}/enfermeria`
     setSaving(true)
+    setError('')
     try {
-      const base = `/lotes/${item.loteId}/animales/${item.animalId}/enfermeria`
-      if (c.tipo === CORRAL_TIPOS.ENFERMERIA) {
-        await api.post(base, { idCorral: c.id })
-      } else {
-        await api.delete(base)
-      }
+      await fn(base)
+      setPendiente(null)
       await mutate('/corrales/mapa')
       await mutate(`/lotes/${item.loteId}`)
     } catch (err) {
       console.error(err)
-      await mutate('/corrales/mapa', previous, { revalidate: false })
       const msg =
         (err as { response?: { data?: { message?: string } } })?.response?.data
           ?.message || 'No se pudo mover el animal.'
       setError(msg)
       setTimeout(() => setError(''), 4000)
+      // Se relanza para que el modal abierto muestre el error y libere el busy.
+      throw err
     } finally {
       setSaving(false)
     }
+  }
+
+  const labelDe = (item: DragItem) => {
+    const tok = corrales
+      ?.flatMap((s) => s.animales)
+      .find((a) => a.animalId === item.animalId)
+    return `Animal ${tok?.nAnimal ?? item.animalId}`
   }
 
   if (!canVer) return null
@@ -139,8 +146,8 @@ const handleDrop = async (c: CorralMapaItem) => {
         <h2 className="text-base font-semibold text-foreground tracking-tight">Corrales</h2>
         <p className="text-xs text-muted-foreground mt-0.5">
           {canMover
-            ? 'Arrastrá una ficha: común → enfermería para enviarla; enfermería → el corral de su lote para traerla.'
-            : 'Los animales se muestran con el color de su lote.'}
+            ? 'Arrastrá una ficha a enfermería (pedirá la razón) o al corral de su lote para traerla. Click: movimientos.'
+            : 'Click en una ficha para ver sus movimientos. Los animales se muestran con el color de su lote.'}
         </p>
       </div>
 
@@ -193,7 +200,7 @@ const handleDrop = async (c: CorralMapaItem) => {
                 }}
                 onDrop={(e) => {
                   e.preventDefault()
-                  void handleDrop(c)
+                  handleDrop(c)
                 }}
                 className={`premium-card p-4 space-y-3 transition-all ${dragCls}`}
               >
@@ -244,9 +251,9 @@ const handleDrop = async (c: CorralMapaItem) => {
                           onDragEnd={clearDrag}
                           onClick={() => {
                             if (suppressClickRef.current) return
-                            navigate(`/lotes/${a.loteId}`)
+                            setMovAnimal(a)
                           }}
-                          title={`${a.loteNombre} · ${ESTADO_ANIMAL_LABELS[a.estado] ?? a.estado}${draggable ? ' · arrastrable' : ''}`}
+                          title={`${a.loteNombre} · ${ESTADO_ANIMAL_LABELS[a.estado] ?? a.estado} · click: movimientos${draggable ? ' · arrastrable' : ''}`}
                           className={`size-8 rounded-md text-white text-[11px] font-semibold flex items-center justify-center shadow-sm transition-transform ${
                             draggable
                               ? 'cursor-grab active:cursor-grabbing hover:scale-110'
@@ -267,7 +274,7 @@ const handleDrop = async (c: CorralMapaItem) => {
           })}
         </div>
       )}
-          {saving && (
+      {saving && (
         <p
           role="status"
           aria-live="polite"
@@ -275,6 +282,43 @@ const handleDrop = async (c: CorralMapaItem) => {
         >
           <Loader2 className="size-3 animate-spin" strokeWidth={2} /> Guardando…
         </p>
+      )}
+
+      {pendiente?.tipo === 'a_enfermeria' && (
+        <EnviarEnfermeriaModal
+          animalLabel={labelDe(pendiente.item)}
+          enfermerias={[{ id: pendiente.destino.id, nombre: pendiente.destino.nombre }]}
+          onClose={() => setPendiente(null)}
+          onOk={async (motivoId) => {
+            await confirmar((base) =>
+              api.post(base, { idCorral: pendiente.destino.id, idMotivo: motivoId }),
+            )
+          }}
+        />
+      )}
+
+      {pendiente?.tipo === 'de_enfermeria' && (
+        <TraerEnfermeriaModal
+          animalLabel={labelDe(pendiente.item)}
+          onClose={() => setPendiente(null)}
+          onOk={async (estado, motivoId) => {
+            await confirmar((base) =>
+              api.delete(base, { data: { estado, ...(motivoId ? { idMotivo: motivoId } : {}) } }),
+            )
+          }}
+        />
+      )}
+
+      {movAnimal && (
+        <MovimientosModal
+          loteId={movAnimal.loteId}
+          animal={{
+            id: movAnimal.animalId,
+            nAnimal: movAnimal.nAnimal,
+            loteNombre: movAnimal.loteNombre,
+          }}
+          onClose={() => setMovAnimal(null)}
+        />
       )}
     </aside>
   )

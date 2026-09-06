@@ -11,7 +11,7 @@ import {
 import { auth, googleProvider } from '../lib/firebase'
 import { asegurarUsuarioFirestore } from '../lib/signup'
 import { Mail, Lock, Loader2, UserPlus, LogIn, CheckCircle2, KeyRound, Phone } from 'lucide-react'
-import { CowIcon } from '../components/CowIcon'
+import GabinoLogo from '../components/GabinoLogo'
 
 /**
  * Valida un celular en formato internacional (E.164): "+" inicial y 8-15
@@ -143,16 +143,16 @@ export default function Login() {
       <div className="relative z-10 w-full max-w-[420px]">
         <div className="bg-card/90 border border-border shadow-xl rounded-lg overflow-hidden backdrop-blur-md">
           <div className="p-8 pb-4 text-center">
-            <div className="inline-flex p-2.5 rounded-md bg-primary-soft mb-4">
-              <CowIcon className="size-7 text-primary" strokeWidth={1.75} />
+            <div className="inline-flex size-20 rounded-lg bg-primary items-center justify-center mb-4">
+              <GabinoLogo className="size-18 text-white" grosor={6} />
             </div>
-            <h1 className="text-2xl font-semibold text-foreground tracking-tight">Gabino</h1>
+            <h1 className="text-2xl font-semibold text-foreground tracking-tight">Gabino Gestión de Hacienda</h1>
             <p className="text-sm text-muted-foreground mt-1">
               {isForgot
                 ? 'Recupera el acceso a tu cuenta'
                 : isRegister
                   ? 'Crea tu cuenta'
-                  : 'Gestión de hacienda'}
+                  : 'Gestión inteligente para hacienda'}
             </p>
           </div>
 
@@ -382,7 +382,7 @@ export default function Login() {
         </div>
 
         <p className="text-center mt-6 text-xs text-muted-foreground">
-          © 2026 Gabino · Gestión de hacienda
+          © 2026 Gabino Gestión de Hacienda
         </p>
       </div>
     </div>

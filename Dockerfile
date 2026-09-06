@@ -17,7 +17,7 @@ RUN pnpm install --frozen-lockfile
 COPY . .
 
 # Variables de entorno para el build (se pasan como build args)
-ARG VITE_API_URL=http://localhost:3055/api
+ARG VITE_API_URL=http://api.hacienda.gabino.com.ar/api
 ENV VITE_API_URL=$VITE_API_URL
 
 ARG VITE_FIREBASE_API_KEY

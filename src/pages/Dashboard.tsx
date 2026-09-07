@@ -1,8 +1,8 @@
 import { useAuth } from '../contexts/auth-context'
 import { Building2, Users, MapPin, Fence, ArrowRight } from 'lucide-react'
-import { CowIcon } from '../components/CowIcon'
 import { Link } from 'react-router-dom'
 import { getRoleLabel } from '../constantes'
+import GabinoLogo from '../components/GabinoLogo'
 
 export default function Dashboard() {
   const { user, permisos, currentEmpresa, isAnfitrion, isSysAdmin } = useAuth()
@@ -54,8 +54,8 @@ export default function Dashboard() {
       {pending && (
         <div className="premium-card p-6">
           <div className="flex items-start gap-3">
-            <div className="size-10 rounded-md bg-warning-soft text-warning flex items-center justify-center shrink-0">
-              <CowIcon className="size-5" strokeWidth={1.75} />
+            <div className="size-10 rounded-md bg-primary-soft flex items-center justify-center shrink-0">
+              <GabinoLogo className="size-14 text-primary" grosor={10} />
             </div>
             <div className="flex-1">
               <h2 className="text-base font-semibold text-foreground">Cuenta pendiente de habilitación</h2>
@@ -71,8 +71,8 @@ export default function Dashboard() {
       {isAnfitrion && !hasEmpresa && (
         <div className="premium-card p-6">
           <div className="flex items-start gap-3">
-            <div className="size-10 rounded-md bg-primary-soft text-primary flex items-center justify-center shrink-0">
-              <CowIcon className="size-5" strokeWidth={1.75} />
+            <div className="size-10 rounded-md bg-primary-soft flex items-center justify-center shrink-0">
+              <GabinoLogo className="size-14 text-primary" grosor={10} />
             </div>
             <div className="flex-1">
               <h2 className="text-base font-semibold text-foreground">Creá tu empresa</h2>

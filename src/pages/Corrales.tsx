@@ -26,7 +26,7 @@ interface Corral {
   descripcion: string | null
   activo: boolean
   estado: string
-  loteOcupante: { id: number; nombre: string; color: string | null } | null
+  lotesOcupantes: { id: number; nombre: string; color: string | null }[]
   nAnimales: number
 }
 
@@ -225,14 +225,18 @@ export default function Corrales() {
                 if (c.tipo === CORRAL_TIPOS.ENFERMERIA) {
                   return <span className="text-sm text-muted-foreground">{c.nAnimales} en enfermería</span>
                 }
-                return c.loteOcupante ? (
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="size-3.5 rounded-full shrink-0 border border-border"
-                      style={{ backgroundColor: c.loteOcupante.color ?? '#57534E' }}
-                      aria-hidden
-                    />
-                    <span className="text-sm text-foreground">Ocupado · {c.loteOcupante.nombre}</span>
+                return c.lotesOcupantes.length > 0 ? (
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                    {c.lotesOcupantes.map((l) => (
+                      <div key={l.id} className="flex items-center gap-1.5">
+                        <span
+                          className="size-3.5 rounded-full shrink-0 border border-border"
+                          style={{ backgroundColor: l.color ?? '#57534E' }}
+                          aria-hidden
+                        />
+                        <span className="text-sm text-foreground">{l.nombre}</span>
+                      </div>
+                    ))}
                   </div>
                 ) : (
                   <span className="inline-flex text-[10px] font-semibold uppercase tracking-wide rounded-full px-2 py-0.5 text-success bg-success-soft">
@@ -245,11 +249,9 @@ export default function Corrales() {
               header: 'Capacidad',
               accessor: (c) => (
                 <span className="text-sm text-muted-foreground">
-                  {c.tipo === CORRAL_TIPOS.COMUN
-                    ? c.loteOcupante
-                      ? `${c.nAnimales}${c.capacidad ? ` / ${c.capacidad}` : ''}`
-                      : '—'
-                    : `${c.nAnimales}${c.capacidad ? ` / ${c.capacidad}` : ''}`}
+                  {c.nAnimales > 0 || c.tipo === CORRAL_TIPOS.ENFERMERIA
+                    ? `${c.nAnimales}${c.capacidad ? ` / ${c.capacidad}` : ''}`
+                    : '—'}
                 </span>
               ),
             },

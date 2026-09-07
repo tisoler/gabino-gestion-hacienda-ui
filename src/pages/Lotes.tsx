@@ -49,7 +49,7 @@ export default function Lotes() {
         </button>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px] items-start">
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_400px] xl:grid-cols-[minmax(0,1fr)_600px] items-start">
         <div className="min-w-0">
           {isLoading ? (
             <div className="flex items-center justify-center p-20">

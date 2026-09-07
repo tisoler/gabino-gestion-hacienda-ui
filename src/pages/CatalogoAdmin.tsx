@@ -17,6 +17,8 @@ interface AdminItem {
   nombre: string
   idEmpresa: number | null
   global: boolean
+  /** Sólo categoria. */
+  sexo?: string | null
   empresaNombre: string | null
   createdAt: string
 }
@@ -53,6 +55,7 @@ export default function CatalogoAdmin({
   const [empresaFiltro, setEmpresaFiltro] = useState<string | number>('')
   const [nuevoNombre, setNuevoNombre] = useState('')
   const [nuevoScope, setNuevoScope] = useState<string | number>(SCOPE_GLOBAL)
+  const [nuevoSexo, setNuevoSexo] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
@@ -103,8 +106,10 @@ export default function CatalogoAdmin({
       await api.post(`/catalogos/${tipo}/admin`, {
         nombre,
         ...(nuevoScope === SCOPE_GLOBAL ? {} : { idEmpresa: Number(nuevoScope) }),
+        ...(tipo === 'categoria' && nuevoSexo ? { sexo: nuevoSexo } : {}),
       })
       setNuevoNombre('')
+      setNuevoSexo('')
       setSuccess(`${nombreValor[0].toUpperCase()}${nombreValor.slice(1)} agregada.`)
       await mutate(listKey)
       await mutate(`/catalogos/${tipo}`)
@@ -171,7 +176,7 @@ export default function CatalogoAdmin({
       {/* Alta */}
       <section className="bg-card border border-border rounded-lg p-5 space-y-3 max-w-2xl">
         <h2 className="text-sm font-semibold text-foreground">Agregar {nombreValor}</h2>
-        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
+        <div className={`grid gap-3 sm:items-end ${tipo === 'categoria' ? 'sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto]' : 'sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]'}`}>
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-foreground">Nombre *</label>
             <input
@@ -197,6 +202,20 @@ export default function CatalogoAdmin({
             onChange={setNuevoScope}
             options={[{ value: SCOPE_GLOBAL, label: 'Global (todas las empresas)' }, ...empresaOptions]}
           />
+          {tipo === 'categoria' && (
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-foreground">Sexo</label>
+              <select
+                value={nuevoSexo}
+                onChange={(e) => setNuevoSexo(e.target.value)}
+                className={`${inputCls} cursor-pointer`}
+              >
+                <option value="">Indistinto</option>
+                <option value="MACHO">Macho</option>
+                <option value="HEMBRA">Hembra</option>
+              </select>
+            </div>
+          )}
           <button
             onClick={agregar}
             disabled={busy}
@@ -222,6 +241,18 @@ export default function CatalogoAdmin({
               header: 'Nombre',
               accessor: (r) => <span className="font-medium text-foreground">{r.nombre}</span>,
             },
+            ...(tipo === 'categoria'
+              ? [
+                  {
+                    header: 'Sexo',
+                    accessor: (r: AdminItem) => (
+                      <span className="text-sm text-muted-foreground">
+                        {r.sexo === 'MACHO' ? 'Macho' : r.sexo === 'HEMBRA' ? 'Hembra' : 'Indistinto'}
+                      </span>
+                    ),
+                  },
+                ]
+              : []),
             {
               header: 'Alcance',
               accessor: (r) =>

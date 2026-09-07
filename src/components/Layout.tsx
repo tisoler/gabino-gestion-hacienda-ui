@@ -16,7 +16,13 @@ export default function Layout() {
         className={`transition-[padding] duration-200 ease-out pl-0 ${isCollapsed ? 'lg:pl-16' : 'lg:pl-52'
           }`}
       >
-        <div className="mx-auto max-w-7xl p-4 md:p-6 pt-16 md:pt-4 min-h-screen">
+        {/* El ancho es relativo al área de contenido (ya descuenta el sidebar
+            con el padding-left de <main>). Se usa ~95% centrado en lugar del
+            tope fijo max-w-7xl (1280px): en laptops el ancho es el mismo que
+            antes, pero en monitores grandes se recuperan ~400px que se
+            perdían en márgenes, dejando las tablas más holgadas y evitando
+            el scroll horizontal. Tope alto para pantallas ultra-anchas. */}
+        <div className="w-[95%] max-w-[1800px] mx-auto p-4 md:p-6 pt-16 md:pt-4 min-h-screen">
           <div className="print-hide flex justify-end items-center gap-2 mb-7">
             {currentEmpresa && !isSysAdmin && (
               <span className="inline-flex items-center gap-2 px-3 py-1.5 bg-primary-soft text-primary text-xs font-semibold rounded-full">

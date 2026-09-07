@@ -46,6 +46,8 @@ interface SelectAutocompleteProps {
   onCreate?: (nombre: string) => Promise<string | number>
   /** Texto del botón de alta. Default: Agregar "<valor>". */
   createLabel?: (nombre: string) => string
+  /** Contenido extra sobre el botón "Agregar" (p.ej. un select de sexo). */
+  renderCreateExtra?: ReactNode
 }
 
 const DEFAULT_SORT: SelectAutocompleteSort = { by: 'alfabetico', direction: 'asc' }
@@ -67,6 +69,7 @@ export default function SelectAutocomplete({
   allowCreate = false,
   onCreate,
   createLabel,
+  renderCreateExtra,
 }: SelectAutocompleteProps) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
@@ -233,7 +236,8 @@ export default function SelectAutocomplete({
             )}
           </div>
           {mostrarCrear && (
-            <div className="border-t border-border p-2 space-y-1">
+            <div className="border-t border-border p-2 space-y-2">
+              {renderCreateExtra}
               <button
                 type="button"
                 onClick={handleCreate}

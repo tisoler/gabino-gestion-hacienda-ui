@@ -46,11 +46,23 @@ El lint del UI usa `eslint.config.js` (sin autofix en el script). No `any` nuevo
    es muerto). Pasar estado a enfermo/muerto desde la grilla abre `CambioEstadoModal`
    (`AnimalModals.tsx`). El server registra todo en `animal_movimiento`; el historial se ve
    en `MovimientosModal` (click en la ficha del mapa o botón de reloj junto al estado).
-7. **Catálogos** (`CatalogoSelect.tsx`): raza/categoría/proveedor/lugar_origen/motivo como
-   autocomplete con alta inline (`/catalogos/:tipo` lee globales+empresa; POST asocia a la
+7. **Catálogos** (`CatalogoSelect.tsx`): raza/categoria/pelaje/proveedor/lugar_origen/motivo
+   como autocomplete con alta inline (`/catalogos/:tipo` lee globales+empresa; POST asocia a la
    empresa con `escritura:lote`). `SelectAutocomplete` soporta `allowCreate` + `onCreate`
-   (muestra "Agregar …" cuando lo buscado no coincide en lowercase). Vistas sys-admin de
+   (muestra "Agregar …" cuando lo buscado no coincide en lowercase) + `renderCreateExtra`
+   (ej. el select de sexo al crear categorías) y `filter`/`createPayload` en `CatalogoSelect`
+   (ej. pelajes de la raza seleccionada). Vistas sys-admin de
    Razas/Categorías: `pages/CatalogoAdmin.tsx` (submenú "Animales" en el Sidebar).
+8. **Animales**: `caravana` requerida (única por lote) y visible en la tabla; `nAnimal` se
+   precarga con el último del lote + 1 (editable, `siguienteN` en `LoteDetalle`). El **sexo no
+   se edita**: se muestra como label inferido de la categoría (`SexoDeCategoria`). El pelaje es
+   catálogo filtrado por la raza (`PelajeSelect` + `lib/catalogos.ts`); raza y categoría usan
+   `CategoriaSelect`/`CatalogoSelect` con alta inline. **Carga masiva** (`CargaMasivaModal`):
+   campos compartidos + cantidad → preview con caravana por animal
+   (`POST /lotes/:id/animales/masiva`).
+9. **Ancho del layout**: `Layout.tsx` usa `w-[95%] max-w-[1800px]` sobre el área de contenido
+   (ya descuenta el sidebar). Las secciones de filtro/alta de las páginas pueden acotarse
+   (`max-w-2xl`), pero las tablas ocupan todo el ancho para evitar scroll horizontal.
 
 ## Componentes y patrones
 
@@ -59,21 +71,33 @@ El lint del UI usa `eslint.config.js` (sin autofix en el script). No `any` nuevo
   `renderTag`, `allowCreate` + `onCreate` (botón "Agregar …" si lo buscado no coincide en
   lowercase; `onCreate` devuelve el `value` del nuevo item y lo selecciona).
 - **CatalogoSelect** (`src/components/CatalogoSelect.tsx`): SelectAutocomplete conectado a
-  `/catalogos/:tipo` (globales + mi empresa, alta inline asociada a la empresa).
+  `/catalogos/:tipo` (globales + mi empresa, alta inline asociada a la empresa). Props:
+  `filter` (opciones client-side, ej. pelajes de una raza), `createPayload` (campos extra del
+  POST, ej. `sexo`/`idRaza`), `renderCreateExtra` (UI dentro del panel "Agregar"),
+  `defaultFirst`. Helpers de animal en `AnimalCatalogos.tsx` (`CategoriaSelect` con select de
+  sexo al crear, `PelajeSelect` filtrado por raza, `SexoDeCategoria` label) y
+  `lib/catalogos.ts`.
 - **AnimalModals** (`src/components/AnimalModals.tsx`): `EnviarEnfermeriaModal` (motivo +
   picker de enfermerías), `TraerEnfermeriaModal` (estado de salida + causa), `CambioEstadoModal`
   (causa al pasar a enfermo/muerto) y `MovimientosModal` (historial del animal, fecha DESC).
 - **Table** (`src/components/Table.tsx`): tabla genérica con Tailwind (tokens actuales).
 - **CorralMapa** (`src/components/CorralMapa.tsx`): panel de corrales de `/lotes` (ficha por
-  animal con color del lote + N°; anillo rojo = enfermo, atenuado = muerto; **click abre el
-  historial de movimientos** del animal). Sólo con `lectura:corral` (el cliente no lo ve). Con
+  animal con color del lote + **número de caravana**; anillo rojo = enfermo, atenuado = muerto;
+  **click abre el
+  historial de movimientos** del animal). Las fichas salen ordenadas por id de lote y luego por
+  caravana (orden natural). Sólo con `lectura:corral` (el cliente no lo ve). Con
   `escritura:lote` habilita **drag & drop** (HTML5 nativo, sin librerías): común→enfermería
   abre `EnviarEnfermeriaModal` (motivo obligatorio, el destino es la enfermería del drop),
   enfermería→común del lote abre `TraerEnfermeriaModal` (estado de salida), enfermería→otra
   enfermería reasigna (con `EnviarEnfermeriaModal`). Destinos inválidos no aceptan el drop (el
   animal viaja con su lote). Los muertos no se arrastran. El movimiento se persiste tras
   confirmar el modal (ya no es optimista: el modal pide datos obligatorios); en éxito se
-  revalidan `/corrales/mapa` y el lote.
+  revalidan `/corrales/mapa` y el lote. **Layout**: las enfermerías van arriba y los comunes en
+  grilla de 2 columnas (xl). Mientras se arrastra aparece un **dock fijo al pie** (portal) con
+  los destinos válidos (enfermerías, o el corral del lote al traer), para no depender del
+  scroll cuando hay muchos corrales. Un común puede compartir **varios lotes**: el `/corrales/mapa`
+  expone `loteIds[]` y "traer" es válido al soltar en un común cuyo `loteIds` incluya el lote
+  del animal (las fichas de varios lotes conviven en la misma tarjeta, cada una con su color).
 - **CowIcon** (`src/components/CowIcon.tsx`): icono de vaca placeholder (la versión de
   lucide-react instalada no exporta "Cow"). Reemplazar por la marca final cuando exista.
 - **Contextos**: `AuthContext` (`src/contexts/AuthContext.tsx`) + `ThemeContext`. Los tipos

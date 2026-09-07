@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import useSWR, { useSWRConfig } from 'swr'
 import {
@@ -20,7 +20,14 @@ import { useAuth } from '../contexts/auth-context'
 import { useVolver } from '../lib/navegacion'
 import { Table } from '../components/Table'
 import SelectAutocomplete from '../components/SelectAutocomplete'
-import CatalogoSelect from '../components/CatalogoSelect'
+import CatalogoSelect, { type CatalogoItem } from '../components/CatalogoSelect'
+import {
+  CategoriaSelect,
+  PelajeSelect,
+  SexoDeCategoria,
+} from '../components/AnimalCatalogos'
+import { pelajeAptoParaRaza } from '../lib/catalogos'
+import { CargaMasivaModal, type CargaMasivaValues } from '../components/CargaMasivaModal'
 import {
   CambioEstadoModal,
   EnviarEnfermeriaModal,
@@ -39,12 +46,15 @@ import {
 export interface Animal {
   id: number
   nAnimal: number | null
+  caravana: string | null
   sexo: string | null
-  pelaje: string | null
+  idPelaje: number | null
+  pelajeNombre: string | null
   idRaza: number | null
   razaNombre: string | null
   idCategoria: number | null
   categoriaNombre: string | null
+  categoriaSexo: string | null
   fechaPesajeIni: string | null
   pesoInicial: number | null
   desbasteIni: number
@@ -85,7 +95,7 @@ interface CorralOpcion {
   tipo: string
   activo: boolean
   estado: string
-  loteOcupante: { id: number; nombre: string; color: string | null } | null
+  lotesOcupantes: { id: number; nombre: string; color: string | null }[]
   nAnimales: number
 }
 
@@ -153,6 +163,7 @@ export default function LoteDetalle() {
   )
 
   const [animalModal, setAnimalModal] = useState<{ open: boolean; animal?: Animal }>({ open: false })
+  const [masivaModal, setMasivaModal] = useState(false)
   const [enviarModal, setEnviarModal] = useState<{ animal: Animal; enfermerias: EnfermeriaOpcion[] } | null>(null)
   const [traerModal, setTraerModal] = useState<Animal | null>(null)
   const [estadoModal, setEstadoModal] = useState<{ animal: Animal; estado: string } | null>(null)
@@ -160,6 +171,14 @@ export default function LoteDetalle() {
   const [error, setError] = useState('')
 
   const labelAnimal = (a: Animal) => `Animal ${a.nAnimal ?? a.id}`
+
+  // Próximo N° de animal: el último del lote + 1 (para precargar en los alta).
+  const siguienteN = useMemo(() => {
+    const nums = (lote?.animales ?? [])
+      .map((a) => a.nAnimal)
+      .filter((x): x is number => x != null)
+    return nums.length ? Math.max(...nums) + 1 : 1
+  }, [lote])
 
   const handleCrearLote = async (vals: LoteFormSubmit) => {
     const { data } = await api.post<{ id: number }>('/lotes', {
@@ -199,6 +218,13 @@ export default function LoteDetalle() {
     } else {
       await api.post(`/lotes/${lote.id}/animales`, vals)
     }
+    await mutateLote()
+  }
+
+  const handleMasivaSave = async (vals: CargaMasivaValues) => {
+    if (!lote) return
+    await api.post(`/lotes/${lote.id}/animales/masiva`, vals)
+    setMasivaModal(false)
     await mutateLote()
   }
 
@@ -361,12 +387,20 @@ export default function LoteDetalle() {
                 </p>
               </div>
               {puedeEscribir && (
-                <button
-                  onClick={() => setAnimalModal({ open: true })}
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium shadow-sm hover:opacity-90 transition-opacity cursor-pointer"
-                >
-                  <Plus className="size-4" strokeWidth={2} /> Agregar animal
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setMasivaModal(true)}
+                    className="inline-flex items-center gap-2 px-3 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium shadow-sm hover:opacity-90 transition-opacity cursor-pointer"
+                  >
+                    <Plus className="size-4" strokeWidth={2} /> Carga masiva
+                  </button>
+                  <button
+                    onClick={() => setAnimalModal({ open: true })}
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium shadow-sm hover:opacity-90 transition-opacity cursor-pointer"
+                  >
+                    <Plus className="size-4" strokeWidth={2} /> Agregar animal
+                  </button>
+                </div>
               )}
             </div>
 
@@ -392,8 +426,9 @@ export default function LoteDetalle() {
                     </div>
                   ),
                 },
-                { header: 'Sexo', accessor: (a) => <span className="text-muted-foreground">{a.sexo || '—'}</span> },
-                { header: 'Pelaje', accessor: (a) => <span className="text-muted-foreground">{a.pelaje || '—'}</span> },
+                { header: 'Caravana', accessor: (a) => <span className="font-medium text-foreground">{a.caravana || '—'}</span> },
+                { header: 'Sexo', accessor: (a) => <span className="text-muted-foreground">{a.sexo === 'MACHO' ? 'Macho' : a.sexo === 'HEMBRA' ? 'Hembra' : '—'}</span> },
+                { header: 'Pelaje', accessor: (a) => <span className="text-muted-foreground">{a.pelajeNombre || '—'}</span> },
                 { header: 'Raza', accessor: (a) => <span className="text-muted-foreground">{a.razaNombre || '—'}</span> },
                 { header: 'Categoría', accessor: (a) => <span className="text-muted-foreground">{a.categoriaNombre || '—'}</span> },
                 { header: 'Peso ini.', accessor: (a) => <span className="text-muted-foreground">{fmtNum(a.pesoInicial)}</span> },
@@ -413,15 +448,14 @@ export default function LoteDetalle() {
                               key={e}
                               onClick={() => handleEstado(a, e)}
                               title={ESTADO_ANIMAL_LABELS[e]}
-                              className={`px-2 py-1 rounded text-[10px] font-medium transition-colors cursor-pointer ${
-                                a.estado === e
-                                  ? e === 'muerto'
-                                    ? 'bg-muted-foreground text-background'
-                                    : e === 'enfermo'
-                                      ? 'bg-warning text-warning-foreground'
-                                      : 'bg-success text-success-foreground'
-                                  : 'text-muted-foreground hover:text-foreground'
-                              }`}
+                              className={`px-2 py-1 rounded text-[10px] font-medium transition-colors cursor-pointer ${a.estado === e
+                                ? e === 'muerto'
+                                  ? 'bg-muted-foreground text-background'
+                                  : e === 'enfermo'
+                                    ? 'bg-warning text-warning-foreground'
+                                    : 'bg-success text-success-foreground'
+                                : 'text-muted-foreground hover:text-foreground'
+                                }`}
                             >
                               {ESTADO_ANIMAL_LABELS[e]}
                             </button>
@@ -429,9 +463,8 @@ export default function LoteDetalle() {
                         </div>
                       ) : (
                         <span
-                          className={`inline-flex text-[10px] font-semibold uppercase tracking-wide rounded-full px-2 py-0.5 ${
-                            ESTADO_BADGE[a.estado] ?? 'text-muted-foreground bg-muted'
-                          }`}
+                          className={`inline-flex text-[10px] font-semibold uppercase tracking-wide rounded-full px-2 py-0.5 ${ESTADO_BADGE[a.estado] ?? 'text-muted-foreground bg-muted'
+                            }`}
                         >
                           {ESTADO_ANIMAL_LABELS[a.estado] ?? a.estado}
                         </span>
@@ -448,56 +481,55 @@ export default function LoteDetalle() {
                 },
                 ...(puedeEscribir
                   ? [
-                      {
-                        header: 'Enfermería',
-                        accessor: (a: Animal) => {
-                          const adentro = a.idCorralEnfermeria != null
-                          const muerto = a.estado === 'muerto'
-                          return (
-                            <button
-                              onClick={() => handleEnfermeriaToggle(a)}
-                              disabled={muerto}
-                              title={
-                                muerto
-                                  ? 'Un animal muerto no puede moverse'
-                                  : adentro
-                                    ? 'Traer de enfermería'
-                                    : 'Enviar a enfermería'
-                              }
-                              className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
-                                adentro
-                                  ? 'text-warning bg-warning-soft hover:bg-warning hover:text-warning-foreground'
-                                  : 'text-muted-foreground bg-muted hover:bg-primary-soft hover:text-primary'
+                    {
+                      header: 'Enfermería',
+                      accessor: (a: Animal) => {
+                        const adentro = a.idCorralEnfermeria != null
+                        const muerto = a.estado === 'muerto'
+                        return (
+                          <button
+                            onClick={() => handleEnfermeriaToggle(a)}
+                            disabled={muerto}
+                            title={
+                              muerto
+                                ? 'Un animal muerto no puede moverse'
+                                : adentro
+                                  ? 'Traer de enfermería'
+                                  : 'Enviar a enfermería'
+                            }
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${adentro
+                              ? 'text-warning bg-warning-soft hover:bg-warning hover:text-warning-foreground'
+                              : 'text-muted-foreground bg-muted hover:bg-primary-soft hover:text-primary'
                               }`}
-                            >
-                              {adentro ? <Undo2 className="size-3.5" strokeWidth={1.75} /> : <Stethoscope className="size-3.5" strokeWidth={1.75} />}
-                              {adentro ? 'Traer' : 'Enviar'}
-                            </button>
-                          )
-                        },
+                          >
+                            {adentro ? <Undo2 className="size-3.5" strokeWidth={1.75} /> : <Stethoscope className="size-3.5" strokeWidth={1.75} />}
+                            {adentro ? 'Traer' : 'Enviar'}
+                          </button>
+                        )
                       },
-                      {
-                        header: '',
-                        accessor: (a: Animal) => (
-                          <div className="flex items-center justify-end gap-1.5">
-                            <button
-                              onClick={() => setAnimalModal({ open: true, animal: a })}
-                              title="Editar"
-                              className="p-2 rounded-md text-muted-foreground hover:bg-primary-soft hover:text-primary transition-colors cursor-pointer"
-                            >
-                              <Pencil className="size-4" strokeWidth={1.75} />
-                            </button>
-                            <button
-                              onClick={() => handleAnimalDelete(a)}
-                              title="Eliminar"
-                              className="p-2 rounded-md text-muted-foreground hover:bg-destructive-soft hover:text-destructive transition-colors cursor-pointer"
-                            >
-                              <Trash2 className="size-4" strokeWidth={1.75} />
-                            </button>
-                          </div>
-                        ),
-                      },
-                    ]
+                    },
+                    {
+                      header: '',
+                      accessor: (a: Animal) => (
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => setAnimalModal({ open: true, animal: a })}
+                            title="Editar"
+                            className="p-2 rounded-md text-muted-foreground hover:bg-primary-soft hover:text-primary transition-colors cursor-pointer"
+                          >
+                            <Pencil className="size-4" strokeWidth={1.75} />
+                          </button>
+                          <button
+                            onClick={() => handleAnimalDelete(a)}
+                            title="Eliminar"
+                            className="p-2 rounded-md text-muted-foreground hover:bg-destructive-soft hover:text-destructive transition-colors cursor-pointer"
+                          >
+                            <Trash2 className="size-4" strokeWidth={1.75} />
+                          </button>
+                        </div>
+                      ),
+                    },
+                  ]
                   : []),
               ]}
             />
@@ -508,11 +540,20 @@ export default function LoteDetalle() {
       {animalModal.open && lote && (
         <AnimalModal
           animal={animalModal.animal}
+          siguienteN={siguienteN}
           onClose={() => setAnimalModal({ open: false })}
           onOk={async (vals) => {
             await handleAnimalSave(vals)
             setAnimalModal({ open: false })
           }}
+        />
+      )}
+
+      {masivaModal && lote && (
+        <CargaMasivaModal
+          siguienteN={siguienteN}
+          onClose={() => setMasivaModal(false)}
+          onOk={handleMasivaSave}
         />
       )}
 
@@ -597,12 +638,10 @@ function LoteForm({ lote, clientes, corrals, submitLabel, readOnly, onSubmit }: 
     clientes.map((c) => [c.uid, c.rol]),
   )
 
-  // Comunes activos: libres, o ya ocupados por este lote.
+  // Comunes activos: un corral puede compartirse con más de un lote, así que
+  // todos están disponibles (se muestra cuántos animales hay adentro).
   const corralsComunes = corrals.filter(
-    (c) =>
-      c.tipo === CORRAL_TIPOS.COMUN &&
-      c.activo &&
-      (c.estado === 'libre' || c.loteOcupante?.id === lote?.id),
+    (c) => c.tipo === CORRAL_TIPOS.COMUN && c.activo,
   )
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -729,6 +768,15 @@ function LoteForm({ lote, clientes, corrals, submitLabel, readOnly, onSubmit }: 
             onChange={setIdCorral}
             options={corralsComunes.map((c) => ({ value: c.id, label: c.nombre }))}
             clearable
+            renderTag={(o) => {
+              const c = corralsComunes.find((x) => x.id === o.value)
+              if (!c || c.lotesOcupantes.length === 0) return null
+              return (
+                <span className="shrink-0 text-[9px] font-semibold uppercase tracking-wide text-muted-foreground bg-muted rounded-full px-1.5 py-0.5">
+                  {c.lotesOcupantes.length} lote{c.lotesOcupantes.length > 1 ? 's' : ''} · {c.nAnimales}
+                </span>
+              )
+            }}
           />
           {corralsComunes.length === 0 && (
             <p className="text-xs text-muted-foreground mt-1">
@@ -782,9 +830,8 @@ function LoteForm({ lote, clientes, corrals, submitLabel, readOnly, onSubmit }: 
               key={p}
               type="button"
               onClick={() => setColor(p === color ? '' : p)}
-              className={`size-7 rounded-md border transition-all cursor-pointer ${
-                color === p ? 'ring-2 ring-ring scale-110' : 'border-border hover:scale-105'
-              }`}
+              className={`size-7 rounded-md border transition-all cursor-pointer ${color === p ? 'ring-2 ring-ring scale-110' : 'border-border hover:scale-105'
+                }`}
               style={{ backgroundColor: p }}
               aria-label={`Color ${p}`}
             />
@@ -833,8 +880,8 @@ function LoteForm({ lote, clientes, corrals, submitLabel, readOnly, onSubmit }: 
 
 interface AnimalFormValues {
   nAnimal?: number
-  sexo?: string
-  pelaje?: string
+  caravana: string
+  idPelaje: number
   idRaza?: number | null
   idCategoria?: number | null
   fechaPesajeIni?: string
@@ -848,18 +895,22 @@ interface AnimalFormValues {
 
 function AnimalModal({
   animal,
+  siguienteN,
   onClose,
   onOk,
 }: {
   animal?: Animal
+  siguienteN: number
   onClose: () => void
   onOk: (vals: AnimalFormValues) => Promise<void>
 }) {
-  const [nAnimal, setNAnimal] = useState(animal?.nAnimal?.toString() ?? '')
-  const [sexo, setSexo] = useState(animal?.sexo ?? '')
-  const [pelaje, setPelaje] = useState(animal?.pelaje ?? '')
+  const [nAnimal, setNAnimal] = useState(
+    animal?.nAnimal?.toString() ?? String(siguienteN),
+  )
+  const [caravana, setCaravana] = useState(animal?.caravana ?? '')
   const [idRaza, setIdRaza] = useState<string | number>(animal?.idRaza ?? '')
   const [idCategoria, setIdCategoria] = useState<string | number>(animal?.idCategoria ?? '')
+  const [idPelaje, setIdPelaje] = useState<string | number>(animal?.idPelaje ?? '')
   const [fechaPesajeIni, setFechaPesajeIni] = useState(aInputDate(animal?.fechaPesajeIni))
   const [pesoInicial, setPesoInicial] = useState(animal?.pesoInicial?.toString() ?? '')
   const [desbasteIni, setDesbasteIni] = useState(animal?.desbasteIni?.toString() ?? '')
@@ -875,14 +926,34 @@ function AnimalModal({
     return isNaN(n) ? undefined : n
   }
 
+  // Al cambiar la raza, si el pelaje elegido no aplica, se limpia.
+  const { data: pelajes } = useSWR<CatalogoItem[]>('/catalogos/pelaje', fetcher, {
+    revalidateOnFocus: false,
+  })
+  const cambiarRaza = (v: string | number) => {
+    setIdRaza(v)
+    if (idPelaje && pelajes) {
+      const p = pelajes.find((x) => x.id === Number(idPelaje))
+      if (p && !pelajeAptoParaRaza(p, v)) setIdPelaje('')
+    }
+  }
+
   const submit = async () => {
     setError('')
+    if (!caravana.trim()) {
+      setError('La caravana es obligatoria.')
+      return
+    }
+    if (!idPelaje) {
+      setError('El pelaje es obligatorio.')
+      return
+    }
     setBusy(true)
     try {
       await onOk({
         nAnimal: nAnimal.trim() ? parseInt(nAnimal, 10) : undefined,
-        sexo: sexo || undefined,
-        pelaje: pelaje.trim() || undefined,
+        caravana: caravana.trim(),
+        idPelaje: Number(idPelaje),
         idRaza: idRaza === '' ? null : Number(idRaza),
         idCategoria: idCategoria === '' ? null : Number(idCategoria),
         fechaPesajeIni: fechaPesajeIni || undefined,
@@ -923,22 +994,20 @@ function AnimalModal({
           Campos según la planilla de pesaje. El server calcula peso neto, diferencia y aumento diario.
         </p>
 
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1">
             <label className="text-xs font-medium text-foreground">N° animal</label>
             <input type="number" value={nAnimal} onChange={(e) => setNAnimal(e.target.value)} className={inputCls} />
           </div>
           <div className="space-y-1">
-            <label className="text-xs font-medium text-foreground">Sexo</label>
-            <select value={sexo} onChange={(e) => setSexo(e.target.value)} className={`${inputCls} cursor-pointer`}>
-              <option value="">—</option>
-              <option value="MACHO">Macho</option>
-              <option value="HEMBRA">Hembra</option>
-            </select>
-          </div>
-          <div className="space-y-1">
-            <label className="text-xs font-medium text-foreground">Pelaje</label>
-            <input type="text" value={pelaje} onChange={(e) => setPelaje(e.target.value)} className={inputCls} placeholder="Ej: Colorado" />
+            <label className="text-xs font-medium text-foreground">Caravana *</label>
+            <input
+              type="text"
+              value={caravana}
+              onChange={(e) => setCaravana(e.target.value)}
+              className={inputCls}
+              placeholder="Ej: 1234"
+            />
           </div>
         </div>
 
@@ -948,15 +1017,16 @@ function AnimalModal({
             label="Raza"
             placeholder="Buscar o agregar raza..."
             value={idRaza}
-            onChange={setIdRaza}
+            onChange={cambiarRaza}
           />
-          <CatalogoSelect
-            tipo="categoria"
-            label="Categoría"
-            placeholder="Buscar o agregar categoría..."
-            value={idCategoria}
-            onChange={setIdCategoria}
-          />
+          <div className="flex items-end gap-2">
+            <CategoriaSelect value={idCategoria} onChange={setIdCategoria} className="flex-1" />
+            <SexoDeCategoria idCategoria={idCategoria} />
+          </div>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <PelajeSelect value={idPelaje} onChange={setIdPelaje} idRaza={idRaza} />
         </div>
 
         <div className="grid gap-3 sm:grid-cols-3">

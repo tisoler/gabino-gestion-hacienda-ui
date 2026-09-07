@@ -1,6 +1,7 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import useSWR, { useSWRConfig } from 'swr'
-import { Loader2, AlertCircle } from 'lucide-react'
+import { Fence, Loader2, AlertCircle, Stethoscope } from 'lucide-react'
 import api, { fetcher } from '../lib/api'
 import { useAuth } from '../contexts/auth-context'
 import { CORRAL_TIPOS, ESTADO_ANIMAL_LABELS, getLoteColor } from '../constantes'
@@ -13,6 +14,7 @@ import {
 interface TokenAnimal {
   animalId: number
   nAnimal: number | null
+  caravana: string | null
   estado: string
   loteId: number
   loteNombre: string
@@ -24,8 +26,8 @@ interface CorralMapaItem {
   nombre: string
   tipo: string
   activo: boolean
-  /** Comunes: lote ocupante (para validar drag & drop). */
-  loteId: number | null
+  /** Comunes: lotes activos que lo comparten (para validar drag & drop). */
+  loteIds: number[]
   animales: TokenAnimal[]
 }
 
@@ -80,8 +82,9 @@ export function CorralMapa() {
       // A una enfermería distinta (incluye reasignar entre enfermerías).
       return c.id !== item.corralOrigenId
     }
-    // A un común: sólo si es el corral del lote del animal (traer de enfermería).
-    return item.enEnfermeria && c.loteId === item.loteId
+    // A un común: sólo si es un corral donde está el lote del animal (traer de
+    // enfermería). Un común puede compartir varios lotes.
+    return item.enEnfermeria && c.loteIds.includes(item.loteId)
   }
 
   const clearDrag = () => {
@@ -138,6 +141,113 @@ export function CorralMapa() {
     return `Animal ${tok?.nAnimal ?? item.animalId}`
   }
 
+  /**
+   * Mientas se arrastra, los destinos válidos se muestran además en un DOCK
+   * fijo al pie de la pantalla (con portal). Así no hay que scrollear hasta la
+   * enfermería (o hasta el corral del lote) cuando hay muchos corrales.
+   */
+  const destinosDock = drag && corrales ? corrales.filter((c) => destinoValido(drag, c)) : []
+
+  const renderCard = (c: CorralMapaItem): ReactNode => {
+    const esValido = drag ? destinoValido(drag, c) : false
+    const esSobre = esValido && overCorralId === c.id
+    // Durante el drag: los destinos válidos quedan claros/resaltados y
+    // los inválidos se ven deshabilitados.
+    const dragCls = drag
+      ? esValido
+        ? esSobre
+          ? 'ring-2 ring-success shadow-md'
+          : 'ring-1 ring-primary/40 bg-card'
+        : 'opacity-40 saturate-50'
+      : ''
+    return (
+      <div
+        key={c.id}
+        onDragOver={(e) => {
+          if (!drag || !esValido) return
+          e.preventDefault()
+          e.dataTransfer.dropEffect = 'move'
+          if (overCorralId !== c.id) setOverCorralId(c.id)
+        }}
+        onDragLeave={(e) => {
+          if (e.currentTarget.contains(e.relatedTarget as Node)) return
+          if (overCorralId === c.id) setOverCorralId(null)
+        }}
+        onDrop={(e) => {
+          e.preventDefault()
+          handleDrop(c)
+        }}
+        className={`premium-card p-4 space-y-3 transition-all ${dragCls}`}
+      >
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-sm font-semibold text-foreground truncate">{c.nombre}</p>
+          <span
+            className={`shrink-0 text-[10px] font-semibold uppercase tracking-wide rounded-full px-2 py-0.5 ${
+              c.tipo === CORRAL_TIPOS.ENFERMERIA
+                ? 'text-info bg-info-soft'
+                : c.animales.length > 0
+                  ? 'text-primary bg-primary-soft'
+                  : 'text-muted-foreground bg-muted'
+            }`}
+          >
+            {c.tipo === CORRAL_TIPOS.ENFERMERIA
+              ? 'Enfermería'
+              : c.animales.length > 0
+                ? 'Ocupado'
+                : 'Libre'}
+          </span>
+        </div>
+
+        {c.animales.length === 0 ? (
+          <p className="text-xs text-muted-foreground italic">
+            {c.tipo === CORRAL_TIPOS.ENFERMERIA ? 'Sin animales en enfermería.' : 'Libre.'}
+          </p>
+        ) : (
+          <div className="flex flex-wrap gap-1.5 min-h-8">
+            {c.animales.map((a) => {
+              const muerto = a.estado === 'muerto'
+              const draggable = canMover && !muerto
+              const arrastrando = drag?.animalId === a.animalId
+              return (
+                <button
+                  key={a.animalId}
+                  draggable={draggable}
+                  onDragStart={(e) => {
+                    setDrag({
+                      animalId: a.animalId,
+                      loteId: a.loteId,
+                      enEnfermeria: c.tipo === CORRAL_TIPOS.ENFERMERIA,
+                      corralOrigenId: c.id,
+                    })
+                    setError('')
+                    e.dataTransfer.effectAllowed = 'move'
+                    e.dataTransfer.setData('text/plain', String(a.animalId))
+                  }}
+                  onDragEnd={clearDrag}
+                  onClick={() => {
+                    if (suppressClickRef.current) return
+                    setMovAnimal(a)
+                  }}
+                  title={`${a.loteNombre} · Caravana ${a.caravana ?? '—'} · ${ESTADO_ANIMAL_LABELS[a.estado] ?? a.estado} · click: movimientos${draggable ? ' · arrastrable' : ''}`}
+                  className={`h-8 min-w-8 px-1.5 rounded-md text-white text-[11px] font-semibold flex items-center justify-center shadow-sm transition-transform ${
+                    draggable
+                      ? 'cursor-grab active:cursor-grabbing hover:scale-110'
+                      : 'cursor-pointer hover:scale-110'
+                  } ${a.estado === 'enfermo' ? 'ring-2 ring-red-500' : ''} ${
+                    muerto ? 'opacity-40' : ''
+                  } ${arrastrando ? 'opacity-30 scale-95' : ''}`}
+                  style={{ backgroundColor: getLoteColor(a.loteColor) }}
+                >
+                  {a.caravana ?? a.nAnimal ?? ''}
+                </button>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   if (!canVer) return null
 
   return (
@@ -146,7 +256,7 @@ export function CorralMapa() {
         <h2 className="text-base font-semibold text-foreground tracking-tight">Corrales</h2>
         <p className="text-xs text-muted-foreground mt-0.5">
           {canMover
-            ? 'Arrastrá una ficha a enfermería (pedirá la razón) o al corral de su lote para traerla. Click: movimientos.'
+            ? 'Arrastrá una ficha: al soltarla en una enfermería pide la razón; al soltarla en el corral de su lote, el estado de salida. Click: movimientos. Mientras arrastrás, los destinos válidos aparecen abajo.'
             : 'Click en una ficha para ver sus movimientos. Los animales se muestran con el color de su lote.'}
         </p>
       </div>
@@ -172,107 +282,35 @@ export function CorralMapa() {
           </p>
         </div>
       ) : (
-        <div className="space-y-4">
-          {corrales.map((c) => {
-            const esValido = drag ? destinoValido(drag, c) : false
-            const esSobre = esValido && overCorralId === c.id
-            // Durante el drag: los destinos válidos quedan claros/resaltados y
-            // los inválidos se ven deshabilitados.
-            const dragCls = drag
-              ? esValido
-                ? esSobre
-                  ? 'ring-2 ring-success shadow-md'
-                  : 'ring-1 ring-primary/40 bg-card'
-                : 'opacity-40 saturate-50'
-              : ''
-            return (
-              <div
-                key={c.id}
-                onDragOver={(e) => {
-                  if (!drag || !esValido) return
-                  e.preventDefault()
-                  e.dataTransfer.dropEffect = 'move'
-                  if (overCorralId !== c.id) setOverCorralId(c.id)
-                }}
-                onDragLeave={(e) => {
-                  if (e.currentTarget.contains(e.relatedTarget as Node)) return
-                  if (overCorralId === c.id) setOverCorralId(null)
-                }}
-                onDrop={(e) => {
-                  e.preventDefault()
-                  handleDrop(c)
-                }}
-                className={`premium-card p-4 space-y-3 transition-all ${dragCls}`}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-sm font-semibold text-foreground truncate">{c.nombre}</p>
-                  <span
-                    className={`shrink-0 text-[10px] font-semibold uppercase tracking-wide rounded-full px-2 py-0.5 ${
-                      c.tipo === CORRAL_TIPOS.ENFERMERIA
-                        ? 'text-info bg-info-soft'
-                        : c.animales.length > 0
-                          ? 'text-primary bg-primary-soft'
-                          : 'text-muted-foreground bg-muted'
-                    }`}
-                  >
-                    {c.tipo === CORRAL_TIPOS.ENFERMERIA
-                      ? 'Enfermería'
-                      : c.animales.length > 0
-                        ? 'Ocupado'
-                        : 'Libre'}
-                  </span>
-                </div>
-
-                {c.animales.length === 0 ? (
-                  <p className="text-xs text-muted-foreground italic">
-                    {c.tipo === CORRAL_TIPOS.ENFERMERIA ? 'Sin animales en enfermería.' : 'Libre.'}
-                  </p>
-                ) : (
-                  <div className="flex flex-wrap gap-1.5 min-h-8">
-                    {c.animales.map((a) => {
-                      const muerto = a.estado === 'muerto'
-                      const draggable = canMover && !muerto
-                      const arrastrando = drag?.animalId === a.animalId
-                      return (
-                        <button
-                          key={a.animalId}
-                          draggable={draggable}
-                          onDragStart={(e) => {
-                            setDrag({
-                              animalId: a.animalId,
-                              loteId: a.loteId,
-                              enEnfermeria: c.tipo === CORRAL_TIPOS.ENFERMERIA,
-                              corralOrigenId: c.id,
-                            })
-                            setError('')
-                            e.dataTransfer.effectAllowed = 'move'
-                            e.dataTransfer.setData('text/plain', String(a.animalId))
-                          }}
-                          onDragEnd={clearDrag}
-                          onClick={() => {
-                            if (suppressClickRef.current) return
-                            setMovAnimal(a)
-                          }}
-                          title={`${a.loteNombre} · ${ESTADO_ANIMAL_LABELS[a.estado] ?? a.estado} · click: movimientos${draggable ? ' · arrastrable' : ''}`}
-                          className={`size-8 rounded-md text-white text-[11px] font-semibold flex items-center justify-center shadow-sm transition-transform ${
-                            draggable
-                              ? 'cursor-grab active:cursor-grabbing hover:scale-110'
-                              : 'cursor-pointer hover:scale-110'
-                          } ${a.estado === 'enfermo' ? 'ring-2 ring-red-500' : ''} ${
-                            muerto ? 'opacity-40' : ''
-                          } ${arrastrando ? 'opacity-30 scale-95' : ''}`}
-                          style={{ backgroundColor: getLoteColor(a.loteColor) }}
-                        >
-                          {a.nAnimal ?? ''}
-                        </button>
-                      )
-                    })}
+        (() => {
+          const esEnf = (c: CorralMapaItem) => c.tipo === CORRAL_TIPOS.ENFERMERIA
+          const enfermerias = corrales.filter(esEnf)
+          const comunes = corrales.filter((c) => !esEnf(c))
+          return (
+            <div className="space-y-5">
+              {enfermerias.length > 0 && (
+                <section className="space-y-2">
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Enfermería
+                  </h3>
+                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+                    {enfermerias.map(renderCard)}
                   </div>
-                )}
-              </div>
-            )
-          })}
-        </div>
+                </section>
+              )}
+              {comunes.length > 0 && (
+                <section className="space-y-2">
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Corrales comunes
+                  </h3>
+                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+                    {comunes.map(renderCard)}
+                  </div>
+                </section>
+              )}
+            </div>
+          )
+        })()
       )}
       {saving && (
         <p
@@ -320,6 +358,50 @@ export function CorralMapa() {
           onClose={() => setMovAnimal(null)}
         />
       )}
+
+      {drag && destinosDock.length > 0 &&
+        createPortal(
+          <div className="fixed inset-x-0 bottom-6 z-[9998] flex justify-center px-4 pointer-events-none">
+            <div className="pointer-events-auto bg-card/95 backdrop-blur border border-border rounded-xl shadow-2xl p-2.5 flex items-center gap-2 max-w-[92vw] overflow-x-auto">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground shrink-0">
+                Soltar en
+              </span>
+              {destinosDock.map((c) => {
+                const esSobre = overCorralId === c.id
+                return (
+                  <div
+                    key={c.id}
+                    onDragOver={(e) => {
+                      e.preventDefault()
+                      e.dataTransfer.dropEffect = 'move'
+                      if (overCorralId !== c.id) setOverCorralId(c.id)
+                    }}
+                    onDragLeave={() => {
+                      if (overCorralId === c.id) setOverCorralId(null)
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault()
+                      handleDrop(c)
+                    }}
+                    className={`shrink-0 flex items-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${
+                      esSobre
+                        ? 'border-success bg-success-soft text-success'
+                        : 'border-border bg-background text-foreground'
+                    }`}
+                  >
+                    {c.tipo === CORRAL_TIPOS.ENFERMERIA ? (
+                      <Stethoscope className="size-3.5 text-info shrink-0" strokeWidth={2} />
+                    ) : (
+                      <Fence className="size-3.5 text-primary shrink-0" strokeWidth={2} />
+                    )}
+                    {c.nombre}
+                  </div>
+                )
+              })}
+            </div>
+          </div>,
+          document.body,
+        )}
     </aside>
   )
 }

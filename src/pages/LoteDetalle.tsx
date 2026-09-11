@@ -14,6 +14,9 @@ import {
   History,
   Stethoscope,
   Undo2,
+  Scale,
+  TrendingUp,
+  ChevronDown,
 } from 'lucide-react'
 import api, { fetcher } from '../lib/api'
 import { useAuth } from '../contexts/auth-context'
@@ -28,6 +31,20 @@ import {
 } from '../components/AnimalCatalogos'
 import { pelajeAptoParaRaza } from '../lib/catalogos'
 import { CargaMasivaModal, type CargaMasivaValues } from '../components/CargaMasivaModal'
+import { EditorPesos, type EditorAnimalRow } from '../components/EditorPesos'
+import { PesajeIntermedioModal } from '../components/PesajeIntermedioModal'
+import { EvolucionPesos } from '../components/EvolucionPesos'
+import {
+  fechaBase,
+  fechasIntermedias,
+  fmtFechaCorta,
+  fmtPeso,
+  pesoInicialTotal,
+  totalPorFecha,
+  diffDias,
+  type CargarPesajesPayload,
+  type PesajeDto,
+} from '../lib/pesos'
 import {
   CambioEstadoModal,
   EnviarEnfermeriaModal,
@@ -87,6 +104,7 @@ export interface LoteDetalle {
   color: string | null
   activo: boolean
   animales: Animal[]
+  pesajes: PesajeDto[]
 }
 
 interface CorralOpcion {
@@ -168,6 +186,13 @@ export default function LoteDetalle() {
   const [traerModal, setTraerModal] = useState<Animal | null>(null)
   const [estadoModal, setEstadoModal] = useState<{ animal: Animal; estado: string } | null>(null)
   const [movModal, setMovModal] = useState<Animal | null>(null)
+  const [editandoInicial, setEditandoInicial] = useState(false)
+  const [inicialBusy, setInicialBusy] = useState(false)
+  const [intermedioModal, setIntermedioModal] = useState(false)
+  const [intermedioBusy, setIntermedioBusy] = useState(false)
+  const [editandoFecha, setEditandoFecha] = useState<string | null>(null)
+  const [intermedioEditBusy, setIntermedioEditBusy] = useState(false)
+  const [evolucionAbierta, setEvolucionAbierta] = useState(false)
   const [error, setError] = useState('')
 
   const labelAnimal = (a: Animal) => `Animal ${a.nAnimal ?? a.id}`
@@ -179,6 +204,99 @@ export default function LoteDetalle() {
       .filter((x): x is number => x != null)
     return nums.length ? Math.max(...nums) + 1 : 1
   }, [lote])
+
+  // --- Pesajes ---
+  const pesajes = useMemo(() => lote?.pesajes ?? [], [lote])
+  const baseFecha = useMemo(() => fechaBase(pesajes) ?? lote?.fecha ?? null, [pesajes, lote])
+  const intermedias = useMemo(() => fechasIntermedias(pesajes), [pesajes])
+  const totalInicial = useMemo(() => pesoInicialTotal(lote?.animales ?? []), [lote])
+  // Mapa (animalId, fecha) → pesaje para las celdas intermedias.
+  const pesajePorAnimalFecha = useMemo(() => {
+    const m = new Map<string, PesajeDto>()
+    for (const p of pesajes) if (p.tipo === 'intermedio') m.set(`${p.animalId}|${p.fecha}`, p)
+    return m
+  }, [pesajes])
+
+  const animalesEditor: EditorAnimalRow[] = useMemo(
+    () =>
+      (lote?.animales ?? []).map((a) => ({
+        id: a.id,
+        nAnimal: a.nAnimal,
+        caravana: a.caravana,
+        pesoActual: a.pesoInicial,
+      })),
+    [lote],
+  )
+
+  const guardarInicial = async (payload: CargarPesajesPayload) => {
+    if (!lote) return
+    setInicialBusy(true)
+    setError('')
+    try {
+      await api.post(`/lotes/${lote.id}/pesajes/inicial`, payload)
+      await mutateLote()
+      await mutate('/lotes')
+      setEditandoInicial(false)
+    } catch (err) {
+      console.error(err)
+      setError(extractMsg(err, 'No se pudo guardar el peso inicial.'))
+    } finally {
+      setInicialBusy(false)
+    }
+  }
+
+  const agregarIntermedio = async (payload: CargarPesajesPayload) => {
+    if (!lote) return
+    setIntermedioBusy(true)
+    try {
+      await api.post(`/lotes/${lote.id}/pesajes/intermedios`, payload)
+      await mutateLote()
+      setIntermedioModal(false)
+    } catch (err) {
+      console.error(err)
+      throw err
+    } finally {
+      setIntermedioBusy(false)
+    }
+  }
+
+  /**
+   * Guarda la edición inline de un pesaje intermedio. Si cambió la fecha, se
+   * borra la columna anterior y se crea la nueva (misma dinámica que el alta).
+   */
+  const guardarIntermedioEdit = async (
+    fechaOriginal: string,
+    payload: CargarPesajesPayload,
+  ) => {
+    if (!lote) return
+    setIntermedioEditBusy(true)
+    setError('')
+    try {
+      if (payload.fecha !== fechaOriginal) {
+        await api.delete(`/lotes/${lote.id}/pesajes/intermedios/${fechaOriginal}`)
+      }
+      await api.post(`/lotes/${lote.id}/pesajes/intermedios`, payload)
+      await mutateLote()
+      setEditandoFecha(null)
+    } catch (err) {
+      console.error(err)
+      setError(extractMsg(err, 'No se pudo guardar el pesaje.'))
+    } finally {
+      setIntermedioEditBusy(false)
+    }
+  }
+
+  const eliminarIntermedio = async (fecha: string) => {
+    if (!lote) return
+    if (!window.confirm(`¿Eliminar el pesaje intermedio del ${fmtFechaCorta(fecha)} para todo el lote?`)) return
+    try {
+      await api.delete(`/lotes/${lote.id}/pesajes/intermedios/${fecha}`)
+      await mutateLote()
+    } catch (err) {
+      console.error(err)
+      setError(extractMsg(err, 'No se pudo eliminar el pesaje.'))
+    }
+  }
 
   const handleCrearLote = async (vals: LoteFormSubmit) => {
     const { data } = await api.post<{ id: number }>('/lotes', {
@@ -378,6 +496,148 @@ export default function LoteDetalle() {
             onSubmit={handleGuardarLote}
           />
 
+          {/* Pesos del lote: peso inicial (con edición protegida) + intermedios */}
+          <section className="bg-card border border-border rounded-lg p-5 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="size-9 rounded-md bg-primary-soft text-primary flex items-center justify-center shrink-0">
+                  <Scale className="size-5" strokeWidth={1.75} />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-foreground">
+                    Peso inicial total: {fmtPeso(totalInicial)} kg
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {baseFecha
+                      ? `Base ${fmtFechaCorta(baseFecha)} · ${lote.animales.length} animales`
+                      : 'Sin pesaje inicial cargado'}
+                  </p>
+                </div>
+              </div>
+              {puedeEscribir && (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setEditandoInicial((v) => !v)}
+                    className="inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium border border-border hover:bg-accent transition-colors cursor-pointer"
+                  >
+                    <Pencil className="size-4" strokeWidth={2} />
+                    {editandoInicial ? 'Cancelar' : 'Editar peso inicial'}
+                  </button>
+                  <button
+                    onClick={() => setIntermedioModal(true)}
+                    disabled={lote.animales.length === 0}
+                    title={lote.animales.length === 0 ? 'Agregá animales primero' : 'Agregar pesaje intermedio'}
+                    className="inline-flex items-center gap-2 px-3 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium shadow-sm hover:opacity-90 transition-opacity disabled:opacity-50 cursor-pointer"
+                  >
+                    <Plus className="size-4" strokeWidth={2} /> Pesaje intermedio
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {editandoInicial && puedeEscribir && (
+              <div className="border border-border rounded-md p-4 bg-background/40">
+                <EditorPesos
+                  animales={animalesEditor}
+                  fechaInicial={baseFecha}
+                  submitLabel="Guardar peso inicial"
+                  busy={inicialBusy}
+                  onSubmit={guardarInicial}
+                  onCancel={() => setEditandoInicial(false)}
+                />
+              </div>
+            )}
+
+            {/* Pesajes intermedios: una fila por pesaje, editables inline */}
+            {intermedias.length > 0 && (
+              <div className="border border-border rounded-md divide-y divide-border">
+                {intermedias.map((fecha) => {
+                  const pesando = editandoFecha === fecha
+                  return (
+                    <div key={fecha}>
+                      <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
+                        <div className="flex items-center gap-2 text-sm">
+                          <span className="font-medium text-foreground">
+                            Pesaje {fmtFechaCorta(fecha)}
+                          </span>
+                          {baseFecha && (
+                            <span className="inline-flex text-[10px] font-semibold uppercase tracking-wide rounded-full px-2 py-0.5 text-info bg-info-soft">
+                              a {diffDias(baseFecha, fecha)} días
+                            </span>
+                          )}
+                          <span className="text-xs text-muted-foreground">
+                            Total {fmtPeso(totalPorFecha(pesajes, fecha))} kg
+                          </span>
+                        </div>
+                        {puedeEscribir && (
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => setEditandoFecha(pesando ? null : fecha)}
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium border border-border hover:bg-accent transition-colors cursor-pointer"
+                            >
+                              <Pencil className="size-3.5" strokeWidth={2} />
+                              {pesando ? 'Cancelar' : 'Editar'}
+                            </button>
+                            <button
+                              onClick={() => eliminarIntermedio(fecha)}
+                              title="Eliminar este pesaje intermedio"
+                              className="p-1.5 rounded-md text-muted-foreground hover:bg-destructive-soft hover:text-destructive transition-colors cursor-pointer"
+                            >
+                              <Trash2 className="size-3.5" strokeWidth={2} />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      {pesando && puedeEscribir && (
+                        <div className="px-3 pb-3">
+                          <EditorPesos
+                            animales={animalesEditor.map((a) => ({
+                              ...a,
+                              pesoActual:
+                                pesajePorAnimalFecha.get(`${a.id}|${fecha}`)?.peso ?? null,
+                            }))}
+                            fechaInicial={fecha}
+                            modoDefault="animal"
+                            submitLabel="Guardar pesaje"
+                            busy={intermedioEditBusy}
+                            onSubmit={(payload) => guardarIntermedioEdit(fecha, payload)}
+                            onCancel={() => setEditandoFecha(null)}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </section>
+
+          {/* Evolución de pesos (colapsable) */}
+          <section className="bg-card border border-border rounded-lg overflow-hidden">
+            <button
+              onClick={() => setEvolucionAbierta((v) => !v)}
+              className="w-full flex items-center justify-between gap-2 px-5 py-4 hover:bg-accent/50 transition-colors cursor-pointer"
+              aria-expanded={evolucionAbierta}
+            >
+              <span className="inline-flex items-center gap-2 text-sm font-semibold text-foreground">
+                <TrendingUp className="size-4 text-primary" strokeWidth={2} />
+                Evolución de pesos
+              </span>
+              <ChevronDown
+                className={`size-4 text-muted-foreground transition-transform ${evolucionAbierta ? '' : '-rotate-90'}`}
+                strokeWidth={2}
+              />
+            </button>
+            {evolucionAbierta && (
+              <div className="px-5 pb-5">
+                <EvolucionPesos
+                  animales={lote.animales.map((a) => ({ id: a.id, nAnimal: a.nAnimal, caravana: a.caravana }))}
+                  pesajes={pesajes}
+                />
+              </div>
+            )}
+          </section>
+
           <section className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
@@ -433,6 +693,15 @@ export default function LoteDetalle() {
                 { header: 'Categoría', accessor: (a) => <span className="text-muted-foreground">{a.categoriaNombre || '—'}</span> },
                 { header: 'Peso ini.', accessor: (a) => <span className="text-muted-foreground">{fmtNum(a.pesoInicial)}</span> },
                 { header: 'Neto ini.', accessor: (a) => <span className="text-muted-foreground">{fmtNum(a.pesoNetoIni)}</span> },
+                // Una columna por pesaje intermedio (lectura: se edita en el
+                // contenedor de pesos, como el inicial).
+                ...intermedias.map((fecha) => ({
+                  header: `Peso ${fmtFechaCorta(fecha)}${baseFecha ? ` · ${diffDias(baseFecha, fecha)}d` : ''}`,
+                  accessor: (a: Animal) => {
+                    const p = pesajePorAnimalFecha.get(`${a.id}|${fecha}`)
+                    return <span className="text-muted-foreground">{p ? fmtNum(p.peso) : '—'}</span>
+                  },
+                })),
                 { header: 'Peso fin.', accessor: (a) => <span className="text-muted-foreground">{fmtNum(a.pesoFinal)}</span> },
                 { header: 'Neto fin.', accessor: (a) => <span className="text-muted-foreground">{fmtNum(a.pesoNetoFin)}</span> },
                 { header: 'Diferencia', accessor: (a) => <span className="text-muted-foreground">{fmtNum(a.diferencia)}</span> },
@@ -595,6 +864,15 @@ export default function LoteDetalle() {
           loteId={lote.id}
           animal={{ id: movModal.id, nAnimal: movModal.nAnimal }}
           onClose={() => setMovModal(null)}
+        />
+      )}
+
+      {intermedioModal && lote && (
+        <PesajeIntermedioModal
+          animales={animalesEditor.map((a) => ({ ...a, pesoActual: null }))}
+          busy={intermedioBusy}
+          onClose={() => setIntermedioModal(false)}
+          onOk={agregarIntermedio}
         />
       )}
     </div>

@@ -63,6 +63,14 @@ El lint del UI usa `eslint.config.js` (sin autofix en el script). No `any` nuevo
 9. **Ancho del layout**: `Layout.tsx` usa `w-[95%] max-w-[1800px]` sobre el área de contenido
    (ya descuenta el sidebar). Las secciones de filtro/alta de las páginas pueden acotarse
    (`max-w-2xl`), pero las tablas ocupan todo el ancho para evitar scroll horizontal.
+10. **Pesajes**: el peso se guarda SIEMPRE por animal (tabla `pesaje`); el total del lote se
+   deriva sumando. `EditorPesos` maneja el toggle total/animal (total = reparte `total÷N` y
+   previsualiza; animal = inputs por fila y total summarizado). Fecha del pesaje inicial por
+   defecto = hoy, editable. La edición del inicial en `/lotes/:id` está detrás de un botón
+   ("Editar peso inicial") para evitar accidentes; los intermedios se agregan por modal y se
+   editan en su **fila del contenedor de pesos** (botón "Editar" → `EditorPesos` inline con
+   `modoDefault="animal"` prellenado; si cambia la fecha, se borra la columna anterior y se
+   crea la nueva). Las columnas intermedias de la tabla de animales son de **lectura**.
 
 ## Componentes y patrones
 
@@ -100,6 +108,18 @@ El lint del UI usa `eslint.config.js` (sin autofix en el script). No `any` nuevo
   del animal (las fichas de varios lotes conviven en la misma tarjeta, cada una con su color).
 - **CowIcon** (`src/components/CowIcon.tsx`): icono de vaca placeholder (la versión de
   lucide-react instalada no exporta "Cow"). Reemplazar por la marca final cuando exista.
+- **Pesajes** (`lib/pesos.ts` + componentes): la fuente de verdad del peso es `pesaje` (por
+  animal). `EditorPesos` (`components/EditorPesos.tsx`) es el editor reutilizable con toggle
+  **Peso total de lote / Peso por animal** (total → reparte y previsualiza por animal
+  read-only; animal → inputs por fila y total summarizado read-only). Se usa en: edición
+  inline del peso inicial en `LoteDetalle` (detrás del botón "Editar peso inicial") y en
+  `PesajeIntermedioModal` (agregar pesaje intermedio). `CargaMasivaModal` tiene su propio
+  bloque de peso inicial (checkbox + toggle total/animal). `EvolucionPesos`
+  (`components/EvolucionPesos.tsx`, recharts) grafica el lote en sección colapsable con 3
+  checkboxes: peso total (default), promedio e individuales. En el contenedor de pesos hay
+  **una fila por intermedio** (fecha, "a X días", total kg) con botón "Editar" (inline, mismo
+  componente) y papelera para borrar la columna completa; en la tabla de animales las columnas
+  intermedias ("Peso · DD/MM · Xd") son de lectura.
 - **Contextos**: `AuthContext` (`src/contexts/AuthContext.tsx`) + `ThemeContext`. Los tipos
   viven en `*-context.ts` separados.
 

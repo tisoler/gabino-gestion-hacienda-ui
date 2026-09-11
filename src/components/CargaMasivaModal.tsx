@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Loader2, Users, X } from 'lucide-react'
 import CatalogoSelect from './CatalogoSelect'
 import { CategoriaSelect, PelajeSelect, SexoDeCategoria } from './AnimalCatalogos'
+import { round2, fmtPeso, hoyIso } from '../lib/pesos'
 
 const inputCls =
   'w-full px-3 py-2 bg-background border border-border rounded-md text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-primary transition-colors'
@@ -9,6 +10,8 @@ const inputCls =
 interface PreviewRow {
   nAnimal: number
   caravana: string
+  peso?: number
+  desbaste?: number
 }
 
 export interface CargaMasivaValues {
@@ -17,20 +20,24 @@ export interface CargaMasivaValues {
   idCategoria: number
   cantidad: number
   fechaPesajeIni?: string
-  pesoInicial?: number
-  desbasteIni?: number
-  fechaPesajeFin?: string
-  pesoFinal?: number
-  desbasteFin?: number
+  modoInicial?: 'total' | 'animal'
+  pesoTotal?: number
+  desbasteTotal?: number
   observaciones?: string
   animales: PreviewRow[]
 }
 
+const parseNum = (s: string): number | undefined => {
+  const v = parseFloat(s.replace(',', '.'))
+  return isNaN(v) ? undefined : v
+}
+
 /**
  * Carga masiva de animales al lote: raza (opcional), pelaje (requerido) y
- * categoría (requerida, infiere sexo) compartidos + pesajes/observaciones
- * opcionales. Al completar lo requerido y la cantidad, lista el preview con
- * el N° auto (último del lote + 1, +1, …) y un input de caravana por fila.
+ * categoría (requerida, infiere sexo) compartidos + peso inicial con toggle
+ * total/por animal + observaciones. Al completar lo requerido y la cantidad,
+ * lista el preview con N° auto (último del lote + 1, +1, …), caravana por
+ * fila y —según el modo— el peso por animal.
  */
 export function CargaMasivaModal({
   siguienteN,
@@ -45,14 +52,15 @@ export function CargaMasivaModal({
   const [idPelaje, setIdPelaje] = useState<string | number>('')
   const [idCategoria, setIdCategoria] = useState<string | number>('')
   const [cantidad, setCantidad] = useState('')
-  const [fechaPesajeIni, setFechaPesajeIni] = useState('')
-  const [pesoInicial, setPesoInicial] = useState('')
-  const [desbasteIni, setDesbasteIni] = useState('')
-  const [fechaPesajeFin, setFechaPesajeFin] = useState('')
-  const [pesoFinal, setPesoFinal] = useState('')
-  const [desbasteFin, setDesbasteFin] = useState('')
+  const [cargarInicial, setCargarInicial] = useState(false)
+  const [modo, setModo] = useState<'total' | 'animal'>('total')
+  const [fecha, setFecha] = useState(hoyIso())
+  const [pesoTotal, setPesoTotal] = useState('')
+  const [desbasteTotal, setDesbasteTotal] = useState('')
   const [observaciones, setObservaciones] = useState('')
   const [caravanas, setCaravanas] = useState<Record<number, string>>({})
+  const [pesos, setPesos] = useState<Record<number, string>>({})
+  const [desbastes, setDesbastes] = useState<Record<number, string>>({})
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
@@ -60,28 +68,28 @@ export function CargaMasivaModal({
   const cantidadOk = !isNaN(n) && n > 0 && n <= 500
   const requeridosOk = !!idPelaje && !!idCategoria && cantidadOk
 
-  const preview = useMemo<PreviewRow[]>(() => {
+  const preview = useMemo<{ nAnimal: number }[]>(() => {
     if (!cantidadOk) return []
-    return Array.from({ length: n }, (_, i) => ({
-      nAnimal: siguienteN + i,
-      caravana: caravanas[siguienteN + i] ?? '',
-    }))
-  }, [cantidadOk, n, siguienteN, caravanas])
+    return Array.from({ length: n }, (_, i) => ({ nAnimal: siguienteN + i }))
+  }, [cantidadOk, n, siguienteN])
 
-  const setCaravana = (nAnimal: number, val: string) =>
-    setCaravanas((s) => ({ ...s, [nAnimal]: val }))
+  const totalNum = parseNum(pesoTotal)
+  const porAnimal = totalNum != null && n > 0 ? round2(totalNum / n) : null
 
-  const toNum = (s: string): number | undefined => {
-    const v = parseFloat(s.replace(',', '.'))
-    return isNaN(v) ? undefined : v
-  }
+  const setCaravana = (k: number, val: string) =>
+    setCaravanas((s) => ({ ...s, [k]: val }))
+
+  const rows = preview.map((p) => ({
+    nAnimal: p.nAnimal,
+    caravana: (caravanas[p.nAnimal] ?? '').trim(),
+  }))
 
   const submit = async () => {
     setError('')
     if (!idPelaje) return setError('El pelaje es obligatorio.')
     if (!idCategoria) return setError('La categoría es obligatoria.')
     if (!cantidadOk) return setError('Ingresá una cantidad válida (1 a 500).')
-    const rows = preview.map((r) => ({ ...r, caravana: (caravanas[r.nAnimal] ?? '').trim() }))
+    if (rows.length === 0) return
     if (rows.some((r) => !r.caravana)) {
       return setError('Completá la caravana de todos los animales del preview.')
     }
@@ -91,6 +99,12 @@ export function CargaMasivaModal({
       if (seen.has(k)) return setError(`Caravana duplicada: "${r.caravana}".`)
       seen.add(k)
     }
+    if (cargarInicial) {
+      if (!fecha) return setError('Indicá la fecha del pesaje inicial.')
+      if (modo === 'total' && (totalNum == null || totalNum <= 0)) {
+        return setError('Ingresá el peso total del lote.')
+      }
+    }
     setBusy(true)
     try {
       await onOk({
@@ -98,14 +112,33 @@ export function CargaMasivaModal({
         idPelaje: Number(idPelaje),
         idCategoria: Number(idCategoria),
         cantidad: n,
-        fechaPesajeIni: fechaPesajeIni || undefined,
-        pesoInicial: pesoInicial.trim() ? toNum(pesoInicial) : undefined,
-        desbasteIni: desbasteIni.trim() ? toNum(desbasteIni) : undefined,
-        fechaPesajeFin: fechaPesajeFin || undefined,
-        pesoFinal: pesoFinal.trim() ? toNum(pesoFinal) : undefined,
-        desbasteFin: desbasteFin.trim() ? toNum(desbasteFin) : undefined,
+        ...(cargarInicial
+          ? {
+              fechaPesajeIni: fecha,
+              modoInicial: modo,
+              ...(modo === 'total'
+                ? {
+                    pesoTotal: totalNum,
+                    ...(parseNum(desbasteTotal) != null
+                      ? { desbasteTotal: parseNum(desbasteTotal) }
+                      : {}),
+                  }
+                : {}),
+            }
+          : {}),
         observaciones: observaciones.trim() || undefined,
-        animales: rows,
+        animales: rows.map((r) => ({
+          nAnimal: r.nAnimal,
+          caravana: r.caravana,
+          ...(cargarInicial && modo === 'animal' && parseNum(pesos[r.nAnimal] ?? '') != null
+            ? {
+                peso: parseNum(pesos[r.nAnimal] ?? ''),
+                ...(parseNum(desbastes[r.nAnimal] ?? '') != null
+                  ? { desbaste: parseNum(desbastes[r.nAnimal] ?? '') }
+                  : {}),
+              }
+            : {}),
+        })),
       })
     } catch (err) {
       console.error(err)
@@ -165,58 +198,112 @@ export function CargaMasivaModal({
           </div>
         </div>
 
-        <details className="text-sm">
-          <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
-            Pesaje inicial / final y observaciones (opcional, para todos)
-          </summary>
-          <div className="grid gap-3 sm:grid-cols-3 mt-3">
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-foreground">Fecha pesaje inicial</label>
-              <input type="date" value={fechaPesajeIni} onChange={(e) => setFechaPesajeIni(e.target.value)} className={inputCls} />
+        {/* Peso inicial (opcional) */}
+        <div className="space-y-3 border border-border rounded-md p-4">
+          <label className="inline-flex items-center gap-2 text-sm font-medium text-foreground cursor-pointer">
+            <input
+              type="checkbox"
+              checked={cargarInicial}
+              onChange={(e) => setCargarInicial(e.target.checked)}
+              className="size-4 accent-[var(--color-primary)]"
+            />
+            Cargar peso inicial ahora
+          </label>
+          {cargarInicial && (
+            <div className="space-y-3">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-foreground">Fecha *</label>
+                  <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className={inputCls} />
+                </div>
+                <div className="space-y-1">
+                  <span className="text-xs font-medium text-foreground">Modo</span>
+                  <div className="inline-flex rounded-md border border-border bg-muted/40 p-0.5 w-full">
+                    {(['total', 'animal'] as const).map((m) => (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => setModo(m)}
+                        className={`flex-1 px-2 py-1.5 rounded text-xs font-medium transition-colors cursor-pointer ${
+                          modo === m
+                            ? 'bg-primary text-primary-foreground shadow-sm'
+                            : 'text-muted-foreground hover:text-foreground'
+                        }`}
+                      >
+                        {m === 'total' ? 'Peso total' : 'Por animal'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              {modo === 'total' && (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-foreground">Peso total (kg) *</label>
+                    <input type="number" step="0.01" min="0" value={pesoTotal} onChange={(e) => setPesoTotal(e.target.value)} className={inputCls} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-foreground">Desbaste total (opcional)</label>
+                    <input type="number" step="0.01" min="0" value={desbasteTotal} onChange={(e) => setDesbasteTotal(e.target.value)} className={inputCls} />
+                  </div>
+                </div>
+              )}
+              {modo === 'total' && porAnimal != null && (
+                <p className="text-xs text-muted-foreground">≈ {fmtPeso(porAnimal)} kg por animal (se aplicará a cada uno).</p>
+              )}
             </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-foreground">Peso inicial (kg)</label>
-              <input type="number" step="0.01" value={pesoInicial} onChange={(e) => setPesoInicial(e.target.value)} className={inputCls} />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-foreground">Desbaste inicial</label>
-              <input type="number" step="0.01" value={desbasteIni} onChange={(e) => setDesbasteIni(e.target.value)} className={inputCls} />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-foreground">Fecha pesaje final</label>
-              <input type="date" value={fechaPesajeFin} onChange={(e) => setFechaPesajeFin(e.target.value)} className={inputCls} />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-foreground">Peso final (kg)</label>
-              <input type="number" step="0.01" value={pesoFinal} onChange={(e) => setPesoFinal(e.target.value)} className={inputCls} />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-foreground">Desbaste final</label>
-              <input type="number" step="0.01" value={desbasteFin} onChange={(e) => setDesbasteFin(e.target.value)} className={inputCls} />
-            </div>
-            <div className="space-y-1 sm:col-span-3">
-              <label className="text-xs font-medium text-foreground">Observaciones</label>
-              <textarea value={observaciones} onChange={(e) => setObservaciones(e.target.value)} rows={2} className={`${inputCls} resize-y`} />
-            </div>
-          </div>
-        </details>
+          )}
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-foreground">Observaciones (para todos)</label>
+          <textarea value={observaciones} onChange={(e) => setObservaciones(e.target.value)} rows={2} className={`${inputCls} resize-y`} />
+        </div>
 
         {requeridosOk && (
           <div className="border border-border rounded-lg overflow-hidden">
             <div className="flex items-center gap-2 px-3 py-2 bg-muted/60 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              <Users className="size-3.5" strokeWidth={2} /> Preview · {n} animales · ingresá las caravanas
+              <Users className="size-3.5" strokeWidth={2} /> Preview · {n} animales
             </div>
             <div className="divide-y divide-border max-h-64 overflow-y-auto">
-              {preview.map((r) => (
-                <div key={r.nAnimal} className="flex items-center gap-3 px-3 py-2">
-                  <span className="w-12 shrink-0 text-sm font-medium text-foreground">#{r.nAnimal}</span>
+              {preview.map((p) => (
+                <div key={p.nAnimal} className="flex items-center gap-2 px-3 py-2">
+                  <span className="w-10 shrink-0 text-sm font-medium text-foreground">#{p.nAnimal}</span>
                   <input
                     type="text"
-                    value={caravanas[r.nAnimal] ?? ''}
-                    onChange={(e) => setCaravana(r.nAnimal, e.target.value)}
-                    placeholder="Caravana"
+                    value={caravanas[p.nAnimal] ?? ''}
+                    onChange={(e) => setCaravana(p.nAnimal, e.target.value)}
+                    placeholder="Caravana *"
                     className={inputCls}
                   />
+                  {cargarInicial && modo === 'animal' && (
+                    <>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={pesos[p.nAnimal] ?? ''}
+                        onChange={(e) => setPesos((s) => ({ ...s, [p.nAnimal]: e.target.value }))}
+                        placeholder="Peso kg"
+                        className={`${inputCls} w-24`}
+                      />
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={desbastes[p.nAnimal] ?? ''}
+                        onChange={(e) => setDesbastes((s) => ({ ...s, [p.nAnimal]: e.target.value }))}
+                        placeholder="Desb."
+                        title="Desbaste (opcional)"
+                        className={`${inputCls} w-20`}
+                      />
+                    </>
+                  )}
+                  {cargarInicial && modo === 'total' && (
+                    <span className="w-24 shrink-0 text-right text-sm text-muted-foreground tabular-nums">
+                      {porAnimal != null ? `${fmtPeso(porAnimal)} kg` : '—'}
+                    </span>
+                  )}
                 </div>
               ))}
             </div>
@@ -224,7 +311,7 @@ export function CargaMasivaModal({
         )}
         {!requeridosOk && (
           <p className="text-xs text-muted-foreground">
-            Completá pelaje, categoría y cantidad para ver el preview de caravanas.
+            Completá pelaje, categoría y cantidad para ver el preview.
           </p>
         )}
 

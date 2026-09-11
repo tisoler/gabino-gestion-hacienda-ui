@@ -506,119 +506,128 @@ export default function LoteDetalle() {
                 <div>
                   <p className="text-sm font-semibold text-foreground">Pesajes</p>
                   <p className="text-xs text-muted-foreground">
-                    Peso inicial total: {fmtPeso(totalInicial)} kg ·{' '}
-                    {baseFecha
-                      ? `Base ${fmtFechaCorta(baseFecha)} · ${lote.animales.length} animales`
-                      : 'Sin pesaje inicial cargado'}
+                    {lote.animales.length} animales
                   </p>
                 </div>
               </div>
               {puedeEscribir && (
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setEditandoInicial((v) => !v)}
-                    className="inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium border border-border hover:bg-accent transition-colors cursor-pointer"
-                  >
-                    <Pencil className="size-4" strokeWidth={2} />
-                    {editandoInicial ? 'Cancelar' : 'Editar peso inicial'}
-                  </button>
-                  <button
-                    onClick={() => setIntermedioModal(true)}
-                    disabled={lote.animales.length === 0}
-                    title={lote.animales.length === 0 ? 'Agregá animales primero' : 'Agregar pesaje intermedio'}
-                    className="inline-flex items-center gap-2 px-3 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium shadow-sm hover:opacity-90 transition-opacity disabled:opacity-50 cursor-pointer"
-                  >
-                    <Plus className="size-4" strokeWidth={2} /> Pesaje intermedio
-                  </button>
-                </div>
+                <button
+                  onClick={() => setIntermedioModal(true)}
+                  disabled={lote.animales.length === 0}
+                  title={lote.animales.length === 0 ? 'Agregá animales primero' : 'Agregar pesaje intermedio'}
+                  className="inline-flex items-center gap-2 px-3 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium shadow-sm hover:opacity-90 transition-opacity disabled:opacity-50 cursor-pointer"
+                >
+                  <Plus className="size-4" strokeWidth={2} /> Pesaje intermedio
+                </button>
               )}
             </div>
 
-            {editandoInicial && puedeEscribir && (
-              <div className="border border-border rounded-md p-4 bg-background/40">
-                <EditorPesos
-                  animales={animalesEditor}
-                  fechaInicial={baseFecha}
-                  submitLabel="Guardar peso inicial"
-                  busy={inicialBusy}
-                  onSubmit={guardarInicial}
-                  onCancel={() => setEditandoInicial(false)}
-                />
+            {/* Pesajes: fila inicial destacada (editable, no eliminable) + intermedios */}
+            <div className="border border-border rounded-md divide-y divide-border">
+              <div>
+                <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 bg-primary-soft/40">
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className="font-medium text-foreground">
+                      {baseFecha ? `Pesaje ${fmtFechaCorta(baseFecha)}` : 'Peso inicial'}
+                    </span>
+                    <span className="inline-flex text-[10px] font-semibold uppercase tracking-wide rounded-full px-2 py-0.5 text-primary bg-primary-soft">
+                      Inicial
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      Total {fmtPeso(totalInicial)} kg
+                    </span>
+                  </div>
+                  {puedeEscribir && (
+                    <button
+                      onClick={() => setEditandoInicial((v) => !v)}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium border border-border bg-card hover:bg-accent transition-colors cursor-pointer"
+                    >
+                      <Pencil className="size-3.5" strokeWidth={2} />
+                      {editandoInicial ? 'Cancelar' : 'Editar pesos iniciales'}
+                    </button>
+                  )}
+                </div>
+                {editandoInicial && puedeEscribir && (
+                  <div className="px-3 py-3">
+                    <EditorPesos
+                      animales={animalesEditor}
+                      fechaInicial={baseFecha}
+                      submitLabel="Guardar peso inicial"
+                      busy={inicialBusy}
+                      onSubmit={guardarInicial}
+                      onCancel={() => setEditandoInicial(false)}
+                    />
+                  </div>
+                )}
               </div>
-            )}
 
-            {/* Pesajes intermedios: una fila por pesaje, editables inline */}
-            {intermedias.length > 0 && (
-              <div className="border border-border rounded-md divide-y divide-border">
-                {intermedias.map((fecha) => {
-                  const pesando = editandoFecha === fecha
-                  return (
-                    <div key={fecha}>
-                      <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
-                        <div className="flex items-center gap-2 text-sm">
-                          <span className="font-medium text-foreground">
-                            Pesaje {fmtFechaCorta(fecha)}
+              {intermedias.map((fecha) => {
+                const pesando = editandoFecha === fecha
+                return (
+                  <div key={fecha}>
+                    <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
+                      <div className="flex items-center gap-2 text-sm">
+                        <span className="font-medium text-foreground">
+                          Pesaje {fmtFechaCorta(fecha)}
+                        </span>
+                        {baseFecha && (
+                          <span className="inline-flex text-[10px] font-semibold uppercase tracking-wide rounded-full px-2 py-0.5 text-info bg-info-soft">
+                            a {diffDias(baseFecha, fecha)} días
                           </span>
-                          {baseFecha && (
-                            <span className="inline-flex text-[10px] font-semibold uppercase tracking-wide rounded-full px-2 py-0.5 text-info bg-info-soft">
-                              a {diffDias(baseFecha, fecha)} días
-                            </span>
-                          )}
-                          <span className="text-xs text-muted-foreground">
-                            Total {fmtPeso(totalPorFecha(pesajes, fecha))} kg
-                          </span>
-                        </div>
-                        {puedeEscribir && (
-                          <div className="flex items-center gap-1">
-                            <button
-                              onClick={() => setEditandoFecha(pesando ? null : fecha)}
-                              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium border border-border hover:bg-accent transition-colors cursor-pointer"
-                            >
-                              <Pencil className="size-3.5" strokeWidth={2} />
-                              {pesando ? 'Cancelar' : 'Editar'}
-                            </button>
-                            <button
-                              onClick={() => eliminarIntermedio(fecha)}
-                              title="Eliminar este pesaje intermedio"
-                              className="p-1.5 rounded-md text-muted-foreground hover:bg-destructive-soft hover:text-destructive transition-colors cursor-pointer"
-                            >
-                              <Trash2 className="size-3.5" strokeWidth={2} />
-                            </button>
-                          </div>
                         )}
+                        <span className="text-xs text-muted-foreground">
+                          Total {fmtPeso(totalPorFecha(pesajes, fecha))} kg
+                        </span>
                       </div>
-                      {pesando && puedeEscribir && (
-                        <div className="px-3 pb-3">
-                          <EditorPesos
-                            animales={animalesEditor.map((a) => ({
-                              ...a,
-                              pesoActual:
-                                pesajePorAnimalFecha.get(`${a.id}|${fecha}`)?.peso ?? null,
-                            }))}
-                            fechaInicial={fecha}
-                            modoDefault="animal"
-                            submitLabel="Guardar pesaje"
-                            busy={intermedioEditBusy}
-                            onSubmit={(payload) => guardarIntermedioEdit(fecha, payload)}
-                            onCancel={() => setEditandoFecha(null)}
-                          />
+                      {puedeEscribir && (
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => setEditandoFecha(pesando ? null : fecha)}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium border border-border hover:bg-accent transition-colors cursor-pointer"
+                          >
+                            <Pencil className="size-3.5" strokeWidth={2} />
+                            {pesando ? 'Cancelar' : 'Editar'}
+                          </button>
+                          <button
+                            onClick={() => eliminarIntermedio(fecha)}
+                            title="Eliminar este pesaje intermedio"
+                            className="p-1.5 rounded-md text-muted-foreground hover:bg-destructive-soft hover:text-destructive transition-colors cursor-pointer"
+                          >
+                            <Trash2 className="size-3.5" strokeWidth={2} />
+                          </button>
                         </div>
                       )}
                     </div>
-                  )
-                })}
-              </div>
-            )}
+                    {pesando && puedeEscribir && (
+                      <div className="px-3 pb-3">
+                        <EditorPesos
+                          animales={animalesEditor.map((a) => ({
+                            ...a,
+                            pesoActual:
+                              pesajePorAnimalFecha.get(`${a.id}|${fecha}`)?.peso ?? null,
+                          }))}
+                          fechaInicial={fecha}
+                          modoDefault="animal"
+                          submitLabel="Guardar pesaje"
+                          busy={intermedioEditBusy}
+                          onSubmit={(payload) => guardarIntermedioEdit(fecha, payload)}
+                          onCancel={() => setEditandoFecha(null)}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
 
             {/* Evolución de pesos: accordion colapsable dentro de la misma sección */}
             <div className="border border-border rounded-md overflow-hidden">
               <button
                 onClick={() => setEvolucionAbierta((v) => !v)}
-                className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 transition-colors cursor-pointer ${
-                  evolucionAbierta
-                    ? 'bg-muted/60 hover:bg-accent'
-                    : 'bg-muted/40 hover:bg-accent'
-                }`}
+                className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 transition-colors cursor-pointer ${evolucionAbierta
+                  ? 'bg-muted/60 hover:bg-accent'
+                  : 'bg-muted/40 hover:bg-accent'
+                  }`}
                 aria-expanded={evolucionAbierta}
               >
                 <span className="inline-flex items-center gap-2 text-sm font-semibold text-foreground">

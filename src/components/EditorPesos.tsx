@@ -182,7 +182,7 @@ export function EditorPesos({
           {/* Preview por animal (no editable) */}
           <div className="border border-border rounded-md divide-y divide-border max-h-56 overflow-y-auto">
             {animales.map((a) => (
-              <div key={a.id} className="flex items-center justify-between px-3 py-1.5 text-sm">
+              <div key={a.id} className="flex items-center justify-between px-3 py-2.5 text-sm">
                 <span className="text-muted-foreground truncate">
                   {a.caravana ? `Caravana ${a.caravana}` : `Animal ${a.nAnimal ?? a.id}`}
                 </span>

@@ -4,8 +4,10 @@ import CatalogoSelect from './CatalogoSelect'
 import { CategoriaSelect, PelajeSelect, SexoDeCategoria } from './AnimalCatalogos'
 import { round2, fmtPeso, hoyIso } from '../lib/pesos'
 
+// Sin ancho: cada uso define el suyo (w-full / w-24 / w-20). `w-full` en la
+// base pisaba a los anchos fijos de las filas del preview.
 const inputCls =
-  'w-full px-3 py-2 bg-background border border-border rounded-md text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-primary transition-colors'
+  'px-3 py-2 bg-background border border-border rounded-md text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-primary transition-colors'
 
 interface PreviewRow {
   nAnimal: number

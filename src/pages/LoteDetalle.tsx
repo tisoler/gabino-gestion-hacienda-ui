@@ -496,7 +496,7 @@ export default function LoteDetalle() {
             onSubmit={handleGuardarLote}
           />
 
-          {/* Pesos del lote: peso inicial (con edición protegida) + intermedios */}
+          {/* Pesajes: peso inicial + intermedios + evolución (misma sección) */}
           <section className="bg-card border border-border rounded-lg p-5 space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-3">
@@ -504,10 +504,9 @@ export default function LoteDetalle() {
                   <Scale className="size-5" strokeWidth={1.75} />
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-foreground">
-                    Peso inicial total: {fmtPeso(totalInicial)} kg
-                  </p>
+                  <p className="text-sm font-semibold text-foreground">Pesajes</p>
                   <p className="text-xs text-muted-foreground">
+                    Peso inicial total: {fmtPeso(totalInicial)} kg ·{' '}
                     {baseFecha
                       ? `Base ${fmtFechaCorta(baseFecha)} · ${lote.animales.length} animales`
                       : 'Sin pesaje inicial cargado'}
@@ -610,32 +609,39 @@ export default function LoteDetalle() {
                 })}
               </div>
             )}
-          </section>
 
-          {/* Evolución de pesos (colapsable) */}
-          <section className="bg-card border border-border rounded-lg overflow-hidden">
-            <button
-              onClick={() => setEvolucionAbierta((v) => !v)}
-              className="w-full flex items-center justify-between gap-2 px-5 py-4 hover:bg-accent/50 transition-colors cursor-pointer"
-              aria-expanded={evolucionAbierta}
-            >
-              <span className="inline-flex items-center gap-2 text-sm font-semibold text-foreground">
-                <TrendingUp className="size-4 text-primary" strokeWidth={2} />
-                Evolución de pesos
-              </span>
-              <ChevronDown
-                className={`size-4 text-muted-foreground transition-transform ${evolucionAbierta ? '' : '-rotate-90'}`}
-                strokeWidth={2}
-              />
-            </button>
-            {evolucionAbierta && (
-              <div className="px-5 pb-5">
-                <EvolucionPesos
-                  animales={lote.animales.map((a) => ({ id: a.id, nAnimal: a.nAnimal, caravana: a.caravana }))}
-                  pesajes={pesajes}
-                />
-              </div>
-            )}
+            {/* Evolución de pesos: accordion colapsable dentro de la misma sección */}
+            <div className="border border-border rounded-md overflow-hidden">
+              <button
+                onClick={() => setEvolucionAbierta((v) => !v)}
+                className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 transition-colors cursor-pointer ${
+                  evolucionAbierta
+                    ? 'bg-muted/60 hover:bg-accent'
+                    : 'bg-muted/40 hover:bg-accent'
+                }`}
+                aria-expanded={evolucionAbierta}
+              >
+                <span className="inline-flex items-center gap-2 text-sm font-semibold text-foreground">
+                  <TrendingUp className="size-4 text-primary" strokeWidth={2} />
+                  Evolución de pesos
+                </span>
+                <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                  {evolucionAbierta ? 'Ocultar' : 'Ver evolución'}
+                  <ChevronDown
+                    className={`size-4 transition-transform ${evolucionAbierta ? '' : '-rotate-90'}`}
+                    strokeWidth={2}
+                  />
+                </span>
+              </button>
+              {evolucionAbierta && (
+                <div className="px-3 py-3 border-t border-border bg-card">
+                  <EvolucionPesos
+                    animales={lote.animales.map((a) => ({ id: a.id, nAnimal: a.nAnimal, caravana: a.caravana }))}
+                    pesajes={pesajes}
+                  />
+                </div>
+              )}
+            </div>
           </section>
 
           <section className="space-y-4">

@@ -1,7 +1,7 @@
 import { useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import useSWR, { useSWRConfig } from 'swr'
-import { Fence, Loader2, AlertCircle, Stethoscope } from 'lucide-react'
+import { Fence, Loader2, AlertCircle, Stethoscope, ChevronDown } from 'lucide-react'
 import api, { fetcher } from '../lib/api'
 import { useAuth } from '../contexts/auth-context'
 import { CORRAL_TIPOS, ESTADO_ANIMAL_LABELS, getLoteColor } from '../constantes'
@@ -53,7 +53,9 @@ export function CorralMapa() {
   const { permisos } = useAuth()
   const { mutate } = useSWRConfig()
 
-  const canVer = permisos.includes('lectura:corral')
+  // El mapa es parte de la vista de Lotes: alcanza con lectura:lote (el server
+  // filtra a los lotes/animales del usuario; enfermería se muestra siempre).
+  const canVer = permisos.includes('lectura:lote')
   const canMover = permisos.includes('escritura:lote')
 
   const { data: corrales, isLoading } = useSWR<CorralMapaItem[]>(
@@ -64,6 +66,8 @@ export function CorralMapa() {
 
   const [drag, setDrag] = useState<DragItem | null>(null)
   const [overCorralId, setOverCorralId] = useState<number | null>(null)
+  // Cards de corral colapsadas (por id). Por defecto expandidas.
+  const [colapsados, setColapsados] = useState<Record<number, boolean>>({})
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   // El drop NO mueve directo: abre el modal de enfermería (motivo obligatorio)
@@ -179,26 +183,41 @@ export function CorralMapa() {
         }}
         className={`premium-card p-4 space-y-3 transition-all ${dragCls}`}
       >
-        <div className="flex items-center justify-between gap-2">
+        {/* Header colapsable (durante el drag se fuerza expandido para soltar) */}
+        <button
+          type="button"
+          onClick={() => setColapsados((s) => ({ ...s, [c.id]: !s[c.id] }))}
+          disabled={!!drag}
+          aria-expanded={!(!drag && colapsados[c.id])}
+          className="w-full flex items-center justify-between gap-2 text-left cursor-pointer group disabled:cursor-default"
+        >
           <p className="text-sm font-semibold text-foreground truncate">{c.nombre}</p>
-          <span
-            className={`shrink-0 text-[10px] font-semibold uppercase tracking-wide rounded-full px-2 py-0.5 ${
-              c.tipo === CORRAL_TIPOS.ENFERMERIA
-                ? 'text-info bg-info-soft'
+          <span className="flex items-center gap-1.5 shrink-0">
+            <span
+              className={`text-[10px] font-semibold uppercase tracking-wide rounded-full px-2 py-0.5 ${
+                c.tipo === CORRAL_TIPOS.ENFERMERIA
+                  ? 'text-info bg-info-soft'
+                  : c.animales.length > 0
+                    ? 'text-primary bg-primary-soft'
+                    : 'text-muted-foreground bg-muted'
+              }`}
+            >
+              {c.tipo === CORRAL_TIPOS.ENFERMERIA
+                ? 'Enfermería'
                 : c.animales.length > 0
-                  ? 'text-primary bg-primary-soft'
-                  : 'text-muted-foreground bg-muted'
-            }`}
-          >
-            {c.tipo === CORRAL_TIPOS.ENFERMERIA
-              ? 'Enfermería'
-              : c.animales.length > 0
-                ? 'Ocupado'
-                : 'Libre'}
+                  ? 'Ocupado'
+                  : 'Libre'}
+            </span>
+            <ChevronDown
+              className={`size-4 text-muted-foreground transition-transform group-hover:text-foreground ${
+                !drag && colapsados[c.id] ? '-rotate-90' : ''
+              }`}
+              strokeWidth={2}
+            />
           </span>
-        </div>
+        </button>
 
-        {c.animales.length === 0 ? (
+        {!drag && colapsados[c.id] ? null : c.animales.length === 0 ? (
           <p className="text-xs text-muted-foreground italic">
             {c.tipo === CORRAL_TIPOS.ENFERMERIA ? 'Sin animales en enfermería.' : 'Libre.'}
           </p>
@@ -286,6 +305,12 @@ export function CorralMapa() {
           const esEnf = (c: CorralMapaItem) => c.tipo === CORRAL_TIPOS.ENFERMERIA
           const enfermerias = corrales.filter(esEnf)
           const comunes = corrales.filter((c) => !esEnf(c))
+          // Con permiso de escritura: 2 columnas de fichas (drag & drop). Sin
+          // escritura: 1 sola columna (sólo visualización; el panel es más
+          // angosto, así la lista de lotes gana ancho).
+          const gridCls = canMover
+            ? 'grid grid-cols-1 xl:grid-cols-2 gap-3'
+            : 'grid grid-cols-1 gap-3'
           return (
             <div className="space-y-5">
               {enfermerias.length > 0 && (
@@ -293,7 +318,7 @@ export function CorralMapa() {
                   <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     Enfermería
                   </h3>
-                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+                  <div className={gridCls}>
                     {enfermerias.map(renderCard)}
                   </div>
                 </section>
@@ -303,7 +328,7 @@ export function CorralMapa() {
                   <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     Corrales comunes
                   </h3>
-                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+                  <div className={gridCls}>
                     {comunes.map(renderCard)}
                   </div>
                 </section>

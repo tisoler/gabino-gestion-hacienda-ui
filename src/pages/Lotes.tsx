@@ -2,11 +2,14 @@ import useSWR from 'swr'
 import { useNavigate } from 'react-router-dom'
 import { Plus, ArrowRight, Loader2 } from 'lucide-react'
 import { fetcher } from '../lib/api'
+import { useAuth } from '../contexts/auth-context'
 import { Table } from '../components/Table'
 import { CorralMapa } from '../components/CorralMapa'
 
 export interface LoteResumen {
   id: number
+  idEmpresa: number
+  nombreEmpresa: string | null
   nombre: string
   descripcion: string | null
   fecha: string | null
@@ -27,6 +30,9 @@ const fmtFecha = (f: string | null): string => {
 
 export default function Lotes() {
   const navigate = useNavigate()
+  const { permisos, isCliente } = useAuth()
+  // El cliente (sin escritura:lote) sólo puede VER; no crea ni entra a editar.
+  const puedeEscribir = permisos.includes('escritura:lote')
 
   const { data: lotes, isLoading } = useSWR<LoteResumen[]>('/lotes', fetcher, {
     revalidateOnFocus: false,
@@ -36,20 +42,30 @@ export default function Lotes() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold text-foreground tracking-tight">Lotes</h1>
+          <h1 className="text-2xl font-semibold text-foreground tracking-tight">
+            {isCliente ? 'Mis lotes' : 'Lotes'}
+          </h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Partidas de animales hospedadas en tu empresa.
+            Partidas de animales y su ubicación en corrales.
           </p>
         </div>
-        <button
-          onClick={() => navigate('/lotes/nueva')}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium shadow-sm hover:opacity-90 transition-opacity cursor-pointer"
-        >
-          <Plus className="size-4" strokeWidth={2} /> Nuevo lote
-        </button>
+        {puedeEscribir && (
+          <button
+            onClick={() => navigate('/lotes/nueva')}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium shadow-sm hover:opacity-90 transition-opacity cursor-pointer"
+          >
+            <Plus className="size-4" strokeWidth={2} /> Nuevo lote
+          </button>
+        )}
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_400px] xl:grid-cols-[minmax(0,1fr)_600px] items-start">
+      <div
+        className={
+          puedeEscribir
+            ? 'grid gap-6 lg:grid-cols-[minmax(0,1fr)_400px] xl:grid-cols-[minmax(0,1fr)_600px] items-start'
+            : 'grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px] xl:grid-cols-[minmax(0,1fr)_340px] items-start'
+        }
+      >
         <div className="min-w-0">
           {isLoading ? (
             <div className="flex items-center justify-center p-20">
@@ -78,8 +94,19 @@ export default function Lotes() {
                     </div>
                   ),
                 },
+                { header: 'Empresa', accessor: (l) => <span className="text-muted-foreground">{l.nombreEmpresa || '—'}</span> },
                 { header: 'Fecha', accessor: (l) => <span className="text-muted-foreground">{fmtFecha(l.fecha)}</span> },
-                { header: 'Cliente', accessor: (l) => <span className="text-muted-foreground">{l.nombreCliente || '—'}</span> },
+                // El cliente sólo ve sus lotes: la columna "Cliente" es él mismo.
+                ...(!isCliente
+                  ? [
+                      {
+                        header: 'Cliente',
+                        accessor: (l: LoteResumen) => (
+                          <span className="text-muted-foreground">{l.nombreCliente || '—'}</span>
+                        ),
+                      },
+                    ]
+                  : []),
                 {
                   header: 'Corral',
                   accessor: (l) =>
@@ -107,7 +134,7 @@ export default function Lotes() {
                         onClick={() => navigate(`/lotes/${l.id}`)}
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium text-primary bg-primary-soft hover:bg-primary hover:text-primary-foreground transition-colors cursor-pointer"
                       >
-                        Ver / Editar <ArrowRight className="size-3.5" strokeWidth={2} />
+                        {puedeEscribir ? 'Ver / Editar' : 'Ver'} <ArrowRight className="size-3.5" strokeWidth={2} />
                       </button>
                     </div>
                   ),

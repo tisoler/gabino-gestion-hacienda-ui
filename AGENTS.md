@@ -93,15 +93,19 @@ El lint del UI usa `eslint.config.js` (sin autofix en el script). No `any` nuevo
   animal con color del lote + **número de caravana**; anillo rojo = enfermo, atenuado = muerto;
   **click abre el
   historial de movimientos** del animal). Las fichas salen ordenadas por id de lote y luego por
-  caravana (orden natural). Sólo con `lectura:corral` (el cliente no lo ve). Con
+  caravana (orden natural). Requiere `lectura:lote` (es parte de la vista de Lotes; el cliente
+  lo ve, filtrado a sus lotes). Con
   `escritura:lote` habilita **drag & drop** (HTML5 nativo, sin librerías): común→enfermería
   abre `EnviarEnfermeriaModal` (motivo obligatorio, el destino es la enfermería del drop),
   enfermería→común del lote abre `TraerEnfermeriaModal` (estado de salida), enfermería→otra
   enfermería reasigna (con `EnviarEnfermeriaModal`). Destinos inválidos no aceptan el drop (el
   animal viaja con su lote). Los muertos no se arrastran. El movimiento se persiste tras
   confirmar el modal (ya no es optimista: el modal pide datos obligatorios); en éxito se
-  revalidan `/corrales/mapa` y el lote. **Layout**: las enfermerías van arriba y los comunes en
-  grilla de 2 columnas (xl). Mientras se arrastra aparece un **dock fijo al pie** (portal) con
+  revalidan `/corrales/mapa` y el lote. **Layout**: las enfermerías van arriba y los comunes
+  abajo; **2 columnas** (xl) sólo con `escritura:lote`, y **1 columna** para lectores (sin
+  interacción; el panel de corrales es más angosto para dar ancho a la lista de lotes). Las cards de corral son **colapsables** (header clickeable, expandidas por
+  defecto; durante el drag se fuerzan expandidas). Mientras se arrastra aparece un **dock fijo
+  al pie** (portal) con
   los destinos válidos (enfermerías, o el corral del lote al traer), para no depender del
   scroll cuando hay muchos corrales. Un común puede compartir **varios lotes**: el `/corrales/mapa`
   expone `loteIds[]` y "traer" es válido al soltar en un común cuyo `loteIds` incluya el lote
@@ -126,7 +130,9 @@ El lint del UI usa `eslint.config.js` (sin autofix en el script). No `any` nuevo
 ## Rutas principales
 
 `/` (Dashboard) · `/login` · `/mi-empresa` (anfitrión/sys-admin) · `/clientes` (anfitrión/sys-admin,
-clientes + operarios con tabs) · `/lotes` (listado + mapa de corrales a la derecha) ·
+clientes + operarios con tabs) · `/lotes` (listado + mapa de corrales a la derecha; muestra
+**columna Empresa** —un cliente puede tener lotes de varias empresas— y el cliente ve "Mis
+lotes", sin columna Cliente y panel de corrales más angosto) ·
 `/lotes/nueva|:id` (detalle: corral/color/proveedor/lugar de origen + titular (cliente o
 anfitrión) + tabla de animales con raza/categoría, toggle de estado Sano/Enfermo/Muerto, enfermería
 y botón de historial de movimientos; el cliente lo ve en modo SÓLO LECTURA) ·
@@ -135,9 +141,10 @@ y botón de historial de movimientos; el cliente lo ve en modo SÓLO LECTURA) ·
 submenú "Animales" en el Sidebar) · `/usuarios` (sys-admin, asignar roles) ·
 `/configuracion` (sys-admin, limpiar caché)
 
-**Cliente**: tiene `lectura:corral` sólo para el **mapa de Lotes** (`/corrales/mapa`), que el
-server filtra a sus lotes/enfermería con animales de sus lotes. No ve la vista Corrales ni
-puede escribir (la UI oculta drag y acciones; los endpoints devuelven 403).
+**Cliente**: el **mapa de Lotes** (`/corrales/mapa`) usa `lectura:lote` y el server lo filtra a
+sus lotes y a los corrales comunes con animales de sus lotes (enfermería se muestra siempre). En el **Dashboard** sólo ve la tarjeta **Lotes**; en `/lotes` no ve "Nuevo
+lote" y el botón de la tabla dice **"Ver"** (los no-escritores no ven "Ver / Editar"). No ve la
+vista Corrales ni puede escribir (la UI oculta drag y acciones; los endpoints devuelven 403).
 
 **Signup sin rol**: un usuario se registra sin rol (pendiente). El Dashboard le muestra la
 cuenta pendiente; sys-admin le asigna rol desde `/usuarios` (`PATCH /usuarios/:uid/rol`) o el

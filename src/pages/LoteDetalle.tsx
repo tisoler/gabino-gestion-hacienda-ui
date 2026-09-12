@@ -1101,8 +1101,8 @@ function LoteForm({ lote, clientes, corrals, submitLabel, readOnly, onSubmit }: 
       <div className="grid gap-4 sm:grid-cols-2">
         <CatalogoSelect
           tipo="proveedor"
-          label="Proveedor"
-          placeholder="Buscar o agregar proveedor..."
+          label="RENSPA origen"
+          placeholder="Buscar o agregar renspa..."
           value={idProveedor}
           onChange={setIdProveedor}
         />

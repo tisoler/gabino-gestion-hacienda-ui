@@ -5,40 +5,45 @@ import { getRoleLabel } from '../constantes'
 import GabinoLogo from '../components/GabinoLogo'
 
 export default function Dashboard() {
-  const { user, permisos, currentEmpresa, isAnfitrion, isSysAdmin } = useAuth()
+  const { user, permisos, currentEmpresa, isAnfitrion, isSysAdmin, isCliente } = useAuth()
   const roleLabel = getRoleLabel(user?.roles)
+  // Saludo: el nombre si existe (cortando el dominio si es email); si no, el rol.
+  const nombre = user?.nombreUsuario?.split('@')[0]
 
   const hasEmpresa = !!currentEmpresa || isSysAdmin
   const pending = !isSysAdmin && (user?.roles?.length ?? 0) === 0
 
+  // El CLIENTE sólo ve Lotes (lectura). El resto se gatea por permiso, igual
+  // que el Sidebar (para el cliente, corrales queda oculto aunque tenga el
+  // permiso del mapa).
   const cards = [
     {
       to: '/mi-empresa',
       title: 'Mi Empresa',
       description: 'Datos de tu empresa: nombre, dirección y teléfono.',
       icon: Building2,
-      show: hasEmpresa || isAnfitrion,
+      show: !isCliente && (hasEmpresa || isAnfitrion),
     },
     {
       to: '/clientes',
       title: 'Clientes',
       description: 'Vinculá clientes y operarios a tu empresa.',
       icon: Users,
-      show: isAnfitrion || isSysAdmin,
+      show: !isCliente && (isAnfitrion || isSysAdmin),
     },
     {
       to: '/lotes',
       title: 'Lotes',
       description: 'Partidas de animales y su mapa de corrales.',
       icon: MapPin,
-      show: true,
+      show: permisos.includes('lectura:lote'),
     },
     {
       to: '/corrales',
       title: 'Corrales',
       description: 'Comunes y de enfermería: alta, edición y estado.',
       icon: Fence,
-      show: permisos.includes('lectura:corral'),
+      show: !isCliente && permisos.includes('lectura:corral'),
     },
   ].filter((c) => c.show)
 
@@ -47,7 +52,12 @@ export default function Dashboard() {
       <div>
         <h1 className="text-2xl font-semibold text-foreground tracking-tight">Dashboard</h1>
         <p className="text-sm text-muted-foreground mt-0.5">
-          {roleLabel ? `Bienvenido, ${roleLabel}. ` : ''}Gestión de hacienda Gabino.
+          {nombre
+            ? `Bienvenido, ${nombre}. `
+            : roleLabel
+              ? `Bienvenido, ${roleLabel}. `
+              : ''}
+          Gestión de hacienda Gabino.
         </p>
       </div>
 

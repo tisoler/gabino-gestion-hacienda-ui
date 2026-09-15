@@ -89,6 +89,8 @@ function SidebarContent({ isCollapsed, setIsCollapsed, onCloseMobile }: SidebarC
   const { mode, setMode } = useTheme()
 
   const roleLabel = getRoleLabel(user?.roles)
+  // Nombre de Firestore; si no hay, el mail sin dominio.
+  const displayName = user?.nombre ?? user?.nombreUsuario?.split('@')[0] ?? ''
 
   const hasPermission = (permission: string) => permisos.includes(permission)
 
@@ -256,11 +258,11 @@ function SidebarContent({ isCollapsed, setIsCollapsed, onCloseMobile }: SidebarC
             }`}
         >
           <div className="size-8 rounded-md bg-primary-soft text-primary flex items-center justify-center text-sm font-semibold shrink-0">
-            {user?.nombreUsuario?.charAt(0).toUpperCase()}
+            {displayName.charAt(0).toUpperCase()}
           </div>
           {!isCollapsed && (
             <div className="flex flex-col overflow-hidden leading-tight min-w-0">
-              <span className="text-sm font-medium truncate">{user?.nombreUsuario?.split('@')[0]}</span>
+              <span className="text-sm font-medium truncate">{displayName}</span>
               {roleLabel && (
                 <span className="mt-1 inline-flex self-start text-[10px] font-semibold uppercase tracking-wide text-primary bg-primary-soft rounded-full px-2 py-0.5">
                   {roleLabel}

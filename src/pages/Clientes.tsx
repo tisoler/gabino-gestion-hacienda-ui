@@ -341,7 +341,10 @@ function AgregarModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-foreground/40 backdrop-blur-sm">
+    <div
+        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-foreground/40 backdrop-blur-sm"
+        onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}
+      >
       <div className="w-full max-w-md bg-card border border-border rounded-lg shadow-xl p-6 space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-base font-semibold text-foreground">Agregar a la empresa</h2>

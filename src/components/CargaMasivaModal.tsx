@@ -2,10 +2,8 @@ import { useMemo, useState } from 'react'
 import { Loader2, Users, X } from 'lucide-react'
 import CatalogoSelect from './CatalogoSelect'
 import { CategoriaSelect, PelajeSelect, SexoDeCategoria } from './AnimalCatalogos'
-import { round2, fmtPeso, hoyIso } from '../lib/pesos'
+import type { PartidaDto } from '../lib/pesos'
 
-// Sin ancho: cada uso define el suyo (w-full / w-24 / w-20). `w-full` en la
-// base pisaba a los anchos fijos de las filas del preview.
 const inputCls =
   'px-3 py-2 bg-background border border-border rounded-md text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-primary transition-colors'
 
@@ -21,10 +19,8 @@ export interface CargaMasivaValues {
   idPelaje: number
   idCategoria: number
   cantidad: number
-  fechaPesajeIni?: string
-  modoInicial?: 'total' | 'animal'
-  pesoTotal?: number
-  desbasteTotal?: number
+  nuevaPartida?: boolean
+  idPartida?: number
   observaciones?: string
   animales: PreviewRow[]
 }
@@ -35,18 +31,19 @@ const parseNum = (s: string): number | undefined => {
 }
 
 /**
- * Carga masiva de animales al lote: raza (opcional), pelaje (requerido) y
- * categoría (requerida, infiere sexo) compartidos + peso inicial con toggle
- * total/por animal + observaciones. Al completar lo requerido y la cantidad,
- * lista el preview con N° auto (último del lote + 1, +1, …), caravana por
- * fila y —según el modo— el peso por animal.
+ * Carga masiva de animales (una tanda = una partida). Los pesajes se cargan
+ * aparte; sólo se piden pesos aquí si se une la tanda a una partida que ya
+ * tiene pesaje inicial (para no distorsionar la gráfica).
  */
 export function CargaMasivaModal({
   siguienteN,
+  partidas,
   onClose,
   onOk,
 }: {
   siguienteN: number
+  /** Partidas existentes del lote (para decidir nueva vs unir). */
+  partidas: PartidaDto[]
   onClose: () => void
   onOk: (vals: CargaMasivaValues) => Promise<void>
 }) {
@@ -54,32 +51,28 @@ export function CargaMasivaModal({
   const [idPelaje, setIdPelaje] = useState<string | number>('')
   const [idCategoria, setIdCategoria] = useState<string | number>('')
   const [cantidad, setCantidad] = useState('')
-  const [cargarInicial, setCargarInicial] = useState(false)
-  const [modo, setModo] = useState<'total' | 'animal'>('total')
-  const [fecha, setFecha] = useState(hoyIso())
-  const [pesoTotal, setPesoTotal] = useState('')
-  const [desbasteTotal, setDesbasteTotal] = useState('')
   const [observaciones, setObservaciones] = useState('')
   const [caravanas, setCaravanas] = useState<Record<number, string>>({})
   const [pesos, setPesos] = useState<Record<number, string>>({})
-  const [desbastes, setDesbastes] = useState<Record<number, string>>({})
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
+  // ¿El lote ya tiene animales con pesaje inicial? → hay que decidir partida.
+  const hayPesadas = partidas.some((p) => p.tieneInicial)
+  const [destino, setDestino] = useState<'nueva' | 'existente'>('nueva')
+  const [idPartida, setIdPartida] = useState<string | number>('')
+  const partidaElegida = partidas.find((p) => p.id === Number(idPartida))
+  // Al unir a una partida ya pesada, hay que dar el peso de cada animal nuevo.
+  const requierePesos = hayPesadas && destino === 'existente' && !!partidaElegida?.tieneInicial
+
   const n = parseInt(cantidad, 10)
   const cantidadOk = !isNaN(n) && n > 0 && n <= 500
-  const requeridosOk = !!idPelaje && !!idCategoria && cantidadOk
+  const requeridosOk = !!idPelaje && !!idCategoria && cantidadOk && (!hayPesadas || (destino === 'nueva' || !!idPartida))
 
   const preview = useMemo<{ nAnimal: number }[]>(() => {
     if (!cantidadOk) return []
     return Array.from({ length: n }, (_, i) => ({ nAnimal: siguienteN + i }))
   }, [cantidadOk, n, siguienteN])
-
-  const totalNum = parseNum(pesoTotal)
-  const porAnimal = totalNum != null && n > 0 ? round2(totalNum / n) : null
-
-  const setCaravana = (k: number, val: string) =>
-    setCaravanas((s) => ({ ...s, [k]: val }))
 
   const rows = preview.map((p) => ({
     nAnimal: p.nAnimal,
@@ -101,11 +94,8 @@ export function CargaMasivaModal({
       if (seen.has(k)) return setError(`Caravana duplicada: "${r.caravana}".`)
       seen.add(k)
     }
-    if (cargarInicial) {
-      if (!fecha) return setError('Indicá la fecha del pesaje inicial.')
-      if (modo === 'total' && (totalNum == null || totalNum <= 0)) {
-        return setError('Ingresá el peso total del lote.')
-      }
+    if (requierePesos && rows.some((r) => parseNum(pesos[r.nAnimal] ?? '') == null)) {
+      return setError('La partida elegida ya está pesada: ingresá el peso de cada animal nuevo.')
     }
     setBusy(true)
     try {
@@ -114,31 +104,14 @@ export function CargaMasivaModal({
         idPelaje: Number(idPelaje),
         idCategoria: Number(idCategoria),
         cantidad: n,
-        ...(cargarInicial
-          ? {
-              fechaPesajeIni: fecha,
-              modoInicial: modo,
-              ...(modo === 'total'
-                ? {
-                    pesoTotal: totalNum,
-                    ...(parseNum(desbasteTotal) != null
-                      ? { desbasteTotal: parseNum(desbasteTotal) }
-                      : {}),
-                  }
-                : {}),
-            }
-          : {}),
+        ...(hayPesadas && destino === 'nueva' ? { nuevaPartida: true } : {}),
+        ...(destino === 'existente' && idPartida ? { idPartida: Number(idPartida) } : {}),
         observaciones: observaciones.trim() || undefined,
         animales: rows.map((r) => ({
           nAnimal: r.nAnimal,
           caravana: r.caravana,
-          ...(cargarInicial && modo === 'animal' && parseNum(pesos[r.nAnimal] ?? '') != null
-            ? {
-                peso: parseNum(pesos[r.nAnimal] ?? ''),
-                ...(parseNum(desbastes[r.nAnimal] ?? '') != null
-                  ? { desbaste: parseNum(desbastes[r.nAnimal] ?? '') }
-                  : {}),
-              }
+          ...(requierePesos
+            ? { peso: parseNum(pesos[r.nAnimal] ?? '') }
             : {}),
         })),
       })
@@ -153,10 +126,13 @@ export function CargaMasivaModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-foreground/40 backdrop-blur-sm">
+    <div
+        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-foreground/40 backdrop-blur-sm"
+        onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}
+      >
       <div className="w-full max-w-2xl bg-card border border-border rounded-lg shadow-xl p-6 space-y-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between">
-          <h2 className="text-base font-semibold text-foreground">Carga masiva de animales</h2>
+          <h2 className="text-base font-semibold text-foreground">Cargar animales</h2>
           <button
             onClick={onClose}
             className="p-1.5 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors cursor-pointer"
@@ -166,11 +142,11 @@ export function CargaMasivaModal({
           </button>
         </div>
         <p className="text-xs text-muted-foreground">
-          Se crean N animales con estos datos compartidos. El sexo se infiere de la
-          categoría. Al completar lo obligatorio y la cantidad, cargás cada caravana.
+          Crea una tanda de animales con estos datos compartidos. El peso inicial
+          se carga aparte, en la sección de pesajes.
         </p>
 
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-x-4 gap-y-3 sm:grid-cols-2">
           <CatalogoSelect
             tipo="raza"
             label="Raza"
@@ -182,11 +158,8 @@ export function CargaMasivaModal({
             <CategoriaSelect value={idCategoria} onChange={setIdCategoria} className="flex-1" />
             <SexoDeCategoria idCategoria={idCategoria} />
           </div>
-        </div>
-
-        <div className="grid gap-3 sm:grid-cols-2">
           <PelajeSelect value={idPelaje} onChange={setIdPelaje} idRaza={idRaza} />
-          <div className="space-y-1">
+          <div className="space-y-1.5">
             <label className="text-xs font-medium text-foreground">Cantidad *</label>
             <input
               type="number"
@@ -194,72 +167,60 @@ export function CargaMasivaModal({
               max={500}
               value={cantidad}
               onChange={(e) => setCantidad(e.target.value)}
-              className={inputCls}
+              className={`${inputCls} w-full`}
               placeholder="Ej: 10"
             />
           </div>
         </div>
 
-        {/* Peso inicial (opcional) */}
-        <div className="space-y-3 border border-border rounded-md p-4">
-          <label className="inline-flex items-center gap-2 text-sm font-medium text-foreground cursor-pointer">
-            <input
-              type="checkbox"
-              checked={cargarInicial}
-              onChange={(e) => setCargarInicial(e.target.checked)}
-              className="size-4 accent-[var(--color-primary)]"
-            />
-            Cargar peso inicial ahora
-          </label>
-          {cargarInicial && (
-            <div className="space-y-3">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-foreground">Fecha *</label>
-                  <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className={inputCls} />
-                </div>
-                <div className="space-y-1">
-                  <span className="text-xs font-medium text-foreground">Modo</span>
-                  <div className="inline-flex rounded-md border border-border bg-muted/40 p-0.5 w-full">
-                    {(['total', 'animal'] as const).map((m) => (
-                      <button
-                        key={m}
-                        type="button"
-                        onClick={() => setModo(m)}
-                        className={`flex-1 px-2 py-1.5 rounded text-xs font-medium transition-colors cursor-pointer ${
-                          modo === m
-                            ? 'bg-primary text-primary-foreground shadow-sm'
-                            : 'text-muted-foreground hover:text-foreground'
-                        }`}
-                      >
-                        {m === 'total' ? 'Peso total' : 'Por animal'}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-              {modo === 'total' && (
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium text-foreground">Peso total (kg) *</label>
-                    <input type="number" step="0.01" min="0" value={pesoTotal} onChange={(e) => setPesoTotal(e.target.value)} className={inputCls} />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium text-foreground">Desbaste total (opcional)</label>
-                    <input type="number" step="0.01" min="0" value={desbasteTotal} onChange={(e) => setDesbasteTotal(e.target.value)} className={inputCls} />
-                  </div>
-                </div>
-              )}
-              {modo === 'total' && porAnimal != null && (
-                <p className="text-xs text-muted-foreground">≈ {fmtPeso(porAnimal)} kg por animal (se aplicará a cada uno).</p>
-              )}
+        {/* Partida: sólo si el lote ya tiene animales con pesaje inicial */}
+        {hayPesadas && (
+          <div className="space-y-3 border border-border rounded-md p-4">
+            <div className="text-sm font-medium text-foreground">Partida</div>
+            <div className="inline-flex rounded-md border border-border bg-muted/40 p-0.5">
+              {(['nueva', 'existente'] as const).map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => setDestino(d)}
+                  className={`px-3 py-1.5 rounded text-xs font-medium transition-colors cursor-pointer ${destino === d
+                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                >
+                  {d === 'nueva' ? 'Nueva partida' : 'Partida existente'}
+                </button>
+              ))}
             </div>
-          )}
-        </div>
+            {destino === 'existente' && (
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-foreground">Partida *</label>
+                <select
+                  value={idPartida}
+                  onChange={(e) => setIdPartida(e.target.value ? Number(e.target.value) : '')}
+                  className={`${inputCls} w-full cursor-pointer`}
+                >
+                  <option value="">Elegir partida...</option>
+                  {partidas.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.nombre} · {p.fecha} · {p.nAnimales} animales{p.tieneInicial ? ' · pesada' : ''}
+                    </option>
+                  ))}
+                </select>
+                {requierePesos && (
+                  <p className="text-xs text-muted-foreground">
+                    Esta partida ya tiene pesaje inicial: ingresá el peso de cada
+                    animal nuevo (a la fecha de la partida).
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
-        <div className="space-y-1">
+        <div className="space-y-1.5">
           <label className="text-xs font-medium text-foreground">Observaciones (para todos)</label>
-          <textarea value={observaciones} onChange={(e) => setObservaciones(e.target.value)} rows={2} className={`${inputCls} resize-y`} />
+          <textarea value={observaciones} onChange={(e) => setObservaciones(e.target.value)} rows={2} className={`${inputCls} w-full resize-y`} />
         </div>
 
         {requeridosOk && (
@@ -274,37 +235,20 @@ export function CargaMasivaModal({
                   <input
                     type="text"
                     value={caravanas[p.nAnimal] ?? ''}
-                    onChange={(e) => setCaravana(p.nAnimal, e.target.value)}
+                    onChange={(e) => setCaravanas((s) => ({ ...s, [p.nAnimal]: e.target.value }))}
                     placeholder="Caravana *"
-                    className={inputCls}
+                    className={`${inputCls} flex-1 min-w-0`}
                   />
-                  {cargarInicial && modo === 'animal' && (
-                    <>
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={pesos[p.nAnimal] ?? ''}
-                        onChange={(e) => setPesos((s) => ({ ...s, [p.nAnimal]: e.target.value }))}
-                        placeholder="Peso kg"
-                        className={`${inputCls} w-24`}
-                      />
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={desbastes[p.nAnimal] ?? ''}
-                        onChange={(e) => setDesbastes((s) => ({ ...s, [p.nAnimal]: e.target.value }))}
-                        placeholder="Desb."
-                        title="Desbaste (opcional)"
-                        className={`${inputCls} w-20`}
-                      />
-                    </>
-                  )}
-                  {cargarInicial && modo === 'total' && (
-                    <span className="w-24 shrink-0 text-right text-sm text-muted-foreground tabular-nums">
-                      {porAnimal != null ? `${fmtPeso(porAnimal)} kg` : '—'}
-                    </span>
+                  {requierePesos && (
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={pesos[p.nAnimal] ?? ''}
+                      onChange={(e) => setPesos((s) => ({ ...s, [p.nAnimal]: e.target.value }))}
+                      placeholder="Peso kg *"
+                      className={`${inputCls} w-28 shrink-0`}
+                    />
                   )}
                 </div>
               ))}
@@ -313,7 +257,9 @@ export function CargaMasivaModal({
         )}
         {!requeridosOk && (
           <p className="text-xs text-muted-foreground">
-            Completá pelaje, categoría y cantidad para ver el preview.
+            {hayPesadas && destino === 'existente' && !idPartida
+              ? 'Elegí la partida existente.'
+              : 'Completá pelaje, categoría y cantidad para ver el preview.'}
           </p>
         )}
 
@@ -332,7 +278,7 @@ export function CargaMasivaModal({
             className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium shadow-sm hover:opacity-90 transition-opacity disabled:opacity-50 cursor-pointer"
           >
             {busy ? <Loader2 className="size-4 animate-spin" /> : <Users className="size-4" strokeWidth={2} />}
-            Crear {cantidadOk ? n : ''} animales
+            Agregar {cantidadOk ? n : ''} animales
           </button>
         </div>
       </div>

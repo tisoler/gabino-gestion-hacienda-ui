@@ -11,6 +11,8 @@ export interface Empresa {
 export interface User {
   id: string
   nombreUsuario: string
+  /** Nombre para mostrar (Firestore). Puede ser null. */
+  nombre: string | null
   email?: string | null
   idEmpresas: number[]
   roles: string[]

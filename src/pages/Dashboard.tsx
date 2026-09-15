@@ -7,8 +7,8 @@ import GabinoLogo from '../components/GabinoLogo'
 export default function Dashboard() {
   const { user, permisos, currentEmpresa, isAnfitrion, isSysAdmin, isCliente } = useAuth()
   const roleLabel = getRoleLabel(user?.roles)
-  // Saludo: el nombre si existe (cortando el dominio si es email); si no, el rol.
-  const nombre = user?.nombreUsuario?.split('@')[0]
+  // Saludo: el nombre de Firestore si existe; si no, el mail sin dominio.
+  const nombre = user?.nombre ?? user?.nombreUsuario?.split('@')[0]
 
   const hasEmpresa = !!currentEmpresa || isSysAdmin
   const pending = !isSysAdmin && (user?.roles?.length ?? 0) === 0

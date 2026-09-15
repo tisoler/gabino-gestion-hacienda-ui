@@ -1,7 +1,7 @@
 import { useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import useSWR, { useSWRConfig } from 'swr'
-import { Fence, Loader2, AlertCircle, Stethoscope, ChevronDown } from 'lucide-react'
+import { Fence, Loader2, AlertCircle, Stethoscope, ChevronDown, ChevronsRight, ChevronsLeft } from 'lucide-react'
 import api, { fetcher } from '../lib/api'
 import { useAuth } from '../contexts/auth-context'
 import { CORRAL_TIPOS, ESTADO_ANIMAL_LABELS, getLoteColor } from '../constantes'
@@ -49,7 +49,17 @@ interface DragItem {
  *      enfermería → otra enfermería: reasignar.
  *    Cualquier otro destino es inválido (el animal viaja con su lote).
  */
-export function CorralMapa() {
+export function CorralMapa({
+  puedeColapsar = false,
+  colapsado = false,
+  onToggleColapso,
+}: {
+  /** Con `escritura:lote`: muestra el toggle para colapsar/expandir el panel. */
+  puedeColapsar?: boolean
+  /** Panel colapsado a 1 columna (para dar ancho a la tabla de lotes). */
+  colapsado?: boolean
+  onToggleColapso?: () => void
+} = {}) {
   const { permisos } = useAuth()
   const { mutate } = useSWRConfig()
 
@@ -271,13 +281,29 @@ export function CorralMapa() {
 
   return (
     <aside className="space-y-4 lg:sticky lg:top-4">
-      <div>
-        <h2 className="text-base font-semibold text-foreground tracking-tight">Corrales</h2>
-        <p className="text-xs text-muted-foreground mt-0.5">
-          {canMover
-            ? 'Arrastrá una ficha: al soltarla en una enfermería pide la razón; al soltarla en el corral de su lote, el estado de salida. Click: movimientos. Mientras arrastrás, los destinos válidos aparecen abajo.'
-            : 'Click en una ficha para ver sus movimientos. Los animales se muestran con el color de su lote.'}
-        </p>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <h2 className="text-base font-semibold text-foreground tracking-tight">Corrales</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {canMover
+              ? 'Arrastrá una ficha: al soltarla en una enfermería pide la razón; al soltarla en el corral de su lote, el estado de salida. Click: movimientos. Mientras arrastrás, los destinos válidos aparecen abajo.'
+              : 'Click en una ficha para ver sus movimientos. Los animales se muestran con el color de su lote.'}
+          </p>
+        </div>
+        {puedeColapsar && (
+          <button
+            onClick={onToggleColapso}
+            title={colapsado ? 'Expandir corrales' : 'Colapsar corrales (más lugar para la tabla)'}
+            aria-label={colapsado ? 'Expandir corrales' : 'Colapsar corrales'}
+            className="shrink-0 p-1.5 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors cursor-pointer"
+          >
+            {colapsado ? (
+              <ChevronsLeft className="size-4" strokeWidth={2} />
+            ) : (
+              <ChevronsRight className="size-4" strokeWidth={2} />
+            )}
+          </button>
+        )}
       </div>
 
       {error && (
@@ -305,12 +331,13 @@ export function CorralMapa() {
           const esEnf = (c: CorralMapaItem) => c.tipo === CORRAL_TIPOS.ENFERMERIA
           const enfermerias = corrales.filter(esEnf)
           const comunes = corrales.filter((c) => !esEnf(c))
-          // Con permiso de escritura: 2 columnas de fichas (drag & drop). Sin
-          // escritura: 1 sola columna (sólo visualización; el panel es más
-          // angosto, así la lista de lotes gana ancho).
-          const gridCls = canMover
-            ? 'grid grid-cols-1 xl:grid-cols-2 gap-3'
-            : 'grid grid-cols-1 gap-3'
+          // Con permiso de escritura y sin colapsar: 2 columnas de fichas (drag
+          // & drop). Al colapsar (o sin escritura): 1 sola columna, para que la
+          // tabla de lotes de la izquierda gane ancho.
+          const gridCls =
+            canMover && !colapsado
+              ? 'grid grid-cols-1 xl:grid-cols-2 gap-3'
+              : 'grid grid-cols-1 gap-3'
           return (
             <div className="space-y-5">
               {enfermerias.length > 0 && (

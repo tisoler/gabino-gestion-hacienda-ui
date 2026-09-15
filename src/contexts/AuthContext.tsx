@@ -114,6 +114,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser({
         id: userData.id,
         nombreUsuario: userData.nombreUsuario,
+        nombre: userData.nombre ?? null,
         email: userData.email,
         idEmpresas: Array.isArray(userData.idEmpresas)
           ? userData.idEmpresas.map((e: unknown) => Number(e)).filter((n: number) => Number.isFinite(n) && n > 0)

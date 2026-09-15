@@ -204,9 +204,8 @@ export default function Corrales() {
               header: 'Tipo',
               accessor: (c) => (
                 <span
-                  className={`inline-flex text-[10px] font-semibold uppercase tracking-wide rounded-full px-2 py-0.5 ${
-                    c.tipo === CORRAL_TIPOS.ENFERMERIA ? 'text-info bg-info-soft' : 'text-primary bg-primary-soft'
-                  }`}
+                  className={`inline-flex text-[10px] font-semibold uppercase tracking-wide rounded-full px-2 py-0.5 ${c.tipo === CORRAL_TIPOS.ENFERMERIA ? 'text-info bg-info-soft' : 'text-primary bg-primary-soft'
+                    }`}
                 >
                   {CORRAL_TIPO_LABELS[c.tipo] ?? c.tipo}
                 </span>
@@ -274,11 +273,10 @@ export default function Corrales() {
                       onClick={() => handleToggleActivo(c)}
                       disabled={busy}
                       title={c.activo ? 'Deshabilitar' : 'Habilitar'}
-                      className={`p-2 rounded-md transition-colors cursor-pointer disabled:opacity-40 ${
-                        c.activo
+                      className={`p-2 rounded-md transition-colors cursor-pointer disabled:opacity-40 ${c.activo
                           ? 'text-muted-foreground hover:bg-destructive-soft hover:text-destructive'
                           : 'text-muted-foreground hover:bg-success-soft hover:text-success'
-                      }`}
+                        }`}
                     >
                       {c.activo ? <PowerOff className="size-4" strokeWidth={1.75} /> : <Power className="size-4" strokeWidth={1.75} />}
                     </button>
@@ -349,7 +347,10 @@ function CorralModal({
     'w-full px-3 py-2 bg-background border border-border rounded-md text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-primary transition-colors'
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-foreground/40 backdrop-blur-sm">
+    <div
+        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-foreground/40 backdrop-blur-sm"
+        onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}
+      >
       <div className="w-full max-w-md bg-card border border-border rounded-lg shadow-xl p-6 space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-base font-semibold text-foreground">
@@ -413,7 +414,7 @@ function CorralModal({
             className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium shadow-sm hover:opacity-90 transition-opacity disabled:opacity-50 cursor-pointer"
           >
             {busy ? <Loader2 className="size-4 animate-spin" /> : null}
-            {editando ? 'Guardar cambios' : 'Crear corral'}
+            {editando ? 'Guardar cambios' : 'Agregar corral'}
           </button>
         </div>
       </div>

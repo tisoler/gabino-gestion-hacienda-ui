@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import useSWR from 'swr'
 import { useNavigate } from 'react-router-dom'
 import { Plus, ArrowRight, Loader2 } from 'lucide-react'
@@ -33,6 +34,10 @@ export default function Lotes() {
   const { permisos, isCliente } = useAuth()
   // El cliente (sin escritura:lote) sólo puede VER; no crea ni entra a editar.
   const puedeEscribir = permisos.includes('escritura:lote')
+  // Los que pueden mover arrastrando pueden colapsar el panel de corrales a
+  // 1 columna para darle más ancho a la tabla de lotes. Por defecto expandido.
+  const [corralesColapsado, setCorralesColapsado] = useState(false)
+  const panelColapsado = !puedeEscribir || corralesColapsado
 
   const { data: lotes, isLoading } = useSWR<LoteResumen[]>('/lotes', fetcher, {
     revalidateOnFocus: false,
@@ -61,9 +66,9 @@ export default function Lotes() {
 
       <div
         className={
-          puedeEscribir
-            ? 'grid gap-6 lg:grid-cols-[minmax(0,1fr)_400px] xl:grid-cols-[minmax(0,1fr)_600px] items-start'
-            : 'grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px] xl:grid-cols-[minmax(0,1fr)_340px] items-start'
+          panelColapsado
+            ? 'grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px] xl:grid-cols-[minmax(0,1fr)_360px] items-start'
+            : 'grid gap-6 lg:grid-cols-[minmax(0,1fr)_400px] xl:grid-cols-[minmax(0,1fr)_600px] items-start'
         }
       >
         <div className="min-w-0">
@@ -94,7 +99,19 @@ export default function Lotes() {
                     </div>
                   ),
                 },
-                { header: 'Empresa', accessor: (l) => <span className="text-muted-foreground">{l.nombreEmpresa || '—'}</span> },
+                // Un cliente puede tener lotes de varias empresas; el resto ve
+                // siempre la suya, así que la columna "Empresa" sólo aplica al
+                // cliente (simétrico a ocultarle la columna "Cliente").
+                ...(isCliente
+                  ? [
+                      {
+                        header: 'Empresa',
+                        accessor: (l: LoteResumen) => (
+                          <span className="text-muted-foreground">{l.nombreEmpresa || '—'}</span>
+                        ),
+                      },
+                    ]
+                  : []),
                 { header: 'Fecha', accessor: (l) => <span className="text-muted-foreground">{fmtFecha(l.fecha)}</span> },
                 // El cliente sólo ve sus lotes: la columna "Cliente" es él mismo.
                 ...(!isCliente
@@ -144,7 +161,11 @@ export default function Lotes() {
           )}
         </div>
 
-        <CorralMapa />
+        <CorralMapa
+          puedeColapsar={puedeEscribir}
+          colapsado={panelColapsado}
+          onToggleColapso={() => setCorralesColapsado((v) => !v)}
+        />
       </div>
     </div>
   )

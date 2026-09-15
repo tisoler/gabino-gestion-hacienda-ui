@@ -19,6 +19,18 @@ export interface CargarPesajesPayload {
   pesoTotal?: number
   desbasteTotal?: number
   animales?: { animalId: number; peso: number; desbaste?: number }[]
+  /** Sólo para el pesaje INICIAL: partida objetivo (si el lote tiene varias). */
+  idPartida?: number
+}
+
+/** Partida del lote (ver LotesService.partidasDelLote). */
+export interface PartidaDto {
+  id: number
+  nombre: string
+  /** 'YYYY-MM-DD' */
+  fecha: string
+  nAnimales: number
+  tieneInicial: boolean
 }
 
 export const hoyIso = (): string => {
@@ -67,6 +79,12 @@ export const fechasIntermedias = (pesajes: PesajeDto[]): string[] => {
   const set = new Set<string>()
   for (const p of pesajes) if (p.tipo === 'intermedio') set.add(p.fecha)
   return Array.from(set).sort()
+}
+
+/** Fecha del pesaje final del lote (null si aún no tiene). */
+export const fechaFinal = (pesajes: PesajeDto[]): string | null => {
+  const fs = pesajes.filter((p) => p.tipo === 'final').map((p) => p.fecha)
+  return fs.length ? fs.sort()[fs.length - 1] : null
 }
 
 /** Suma de peso_inicial de los animales (peso inicial total del lote). */

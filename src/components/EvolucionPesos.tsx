@@ -10,29 +10,39 @@ import {
   YAxis,
 } from 'recharts'
 import { PALETA_LOTE } from '../constantes'
-import { fmtFechaCorta, fmtPeso, type PesajeDto } from '../lib/pesos'
+import { fmtFechaCorta, fmtPeso, type PartidaDto, type PesajeDto } from '../lib/pesos'
 
 interface AnimalMin {
   id: number
   nAnimal: number | null
   caravana: string | null
+  idPartida: number | null
 }
 
 type Serie = 'total' | 'promedio' | 'individuales'
 
+/** Color estable por índice de partida/animal. */
+const colorDe = (i: number) => PALETA_LOTE[i % PALETA_LOTE.length]
+
 /**
- * Gráfica de evolución de pesos del lote (líneas). Tres series seleccionables
- * (más de una a la vez): peso total del lote (por defecto), peso promedio de
- * los animales y pesos individuales (una línea por animal).
+ * Gráfica de evolución de pesos del lote (líneas), con 3 series seleccionables:
+ *  - "total": una línea del lote si hay 1 partida, o una línea por partida si
+ *    hay varias (cada partida con su peso total por fecha).
+ *  - "promedio": siempre una línea del lote (todos los animales) + una por
+ *    partida cuando hay varias.
+ *  - "individuales": una línea por animal.
  */
 export function EvolucionPesos({
   animales,
   pesajes,
+  partidas,
 }: {
   animales: AnimalMin[]
   pesajes: PesajeDto[]
+  partidas: PartidaDto[]
 }) {
   const [activas, setActivas] = useState<Serie[]>(['total'])
+  const multi = partidas.length > 1
 
   const fechas = useMemo(() => {
     const set = new Set<string>()
@@ -40,33 +50,39 @@ export function EvolucionPesos({
     return Array.from(set).sort()
   }, [pesajes])
 
-  // Pivot: por fecha → { total, promedio, [a_<id>] }.
+  const animalById = useMemo(
+    () => new Map(animales.map((a) => [a.id, a])),
+    [animales],
+  )
+
+  // Pivot por fecha: lote total/promedio, por partida total/promedio, por animal.
   const data = useMemo(() => {
-    const porFecha = new Map<string, { suma: number; n: number; porAnimal: Map<number, number> }>()
-    for (const p of pesajes) {
-      let d = porFecha.get(p.fecha)
-      if (!d) {
-        d = { suma: 0, n: 0, porAnimal: new Map() }
-        porFecha.set(p.fecha, d)
-      }
-      d.suma += Number(p.peso)
-      d.n += 1
-      d.porAnimal.set(p.animalId, Number(p.peso))
-    }
     return fechas.map((fecha) => {
-      const d = porFecha.get(fecha)!
+      const delDia = pesajes.filter((p) => p.fecha === fecha)
+      const loteSuma = delDia.reduce((acc, p) => acc + Number(p.peso), 0)
       const row: Record<string, number | string> = {
         fecha,
-        total: Math.round(d.suma * 100) / 100,
-        promedio: d.n ? Math.round((d.suma / d.n) * 100) / 100 : 0,
+        totalLote: round2(loteSuma),
+        promLote: delDia.length ? round2(loteSuma / delDia.length) : 0,
       }
-      for (const a of animales) {
-        const v = d.porAnimal.get(a.id)
-        if (v != null) row[`a_${a.id}`] = v
+      // Por partida (total y promedio).
+      for (const pt of partidas) {
+        const idsPartida = new Set(
+          animales.filter((a) => a.idPartida === pt.id).map((a) => a.id),
+        )
+        const dePartida = delDia.filter((p) => idsPartida.has(p.animalId))
+        const suma = dePartida.reduce((acc, p) => acc + Number(p.peso), 0)
+        row[`totalP_${pt.id}`] = dePartida.length ? round2(suma) : (null as unknown as number)
+        row[`promP_${pt.id}`] = dePartida.length ? round2(suma / dePartida.length) : (null as unknown as number)
+      }
+      // Por animal.
+      for (const p of delDia) {
+        const a = animalById.get(p.animalId)
+        if (a) row[`a_${a.id}`] = Number(p.peso)
       }
       return row
     })
-  }, [fechas, pesajes, animales])
+  }, [fechas, pesajes, partidas, animales, animalById])
 
   const toggle = (s: Serie) =>
     setActivas((prev) =>
@@ -93,11 +109,18 @@ export function EvolucionPesos({
     </label>
   )
 
+  const nombreDeAnimal = (id: number) => {
+    const a = animalById.get(id)
+    if (!a) return `#${id}`
+    return a.caravana ? `Car. ${a.caravana}` : `Animal ${a.nAnimal ?? a.id}`
+  }
+  const nombrePartida = (id: number) => partidas.find((p) => p.id === id)?.nombre ?? `Partida`
+
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-4">
-        {checkbox('total', 'Peso total del lote')}
-        {checkbox('promedio', 'Peso promedio')}
+        {checkbox('total', multi ? 'Peso total por partida' : 'Peso total del lote')}
+        {checkbox('promedio', multi ? 'Promedio (lote y partidas)' : 'Peso promedio')}
         {checkbox('individuales', 'Pesos individuales')}
       </div>
 
@@ -120,17 +143,8 @@ export function EvolucionPesos({
             <Tooltip
               formatter={(value: number | string | readonly (number | string)[] | undefined, name: number | string | undefined) => {
                 const key = String(name)
-                const a = animales.find((x) => `a_${x.id}` === key)
-                const label = a
-                  ? a.caravana
-                    ? `Caravana ${a.caravana}`
-                    : `Animal ${a.nAnimal ?? a.id}`
-                  : key === 'total'
-                    ? 'Peso total'
-                    : 'Promedio'
-                const num =
-                  typeof value === 'number' ? value : Number(Array.isArray(value) ? value[0] : value)
-                return [`${fmtPeso(num)} kg`, label]
+                const num = typeof value === 'number' ? value : Number(Array.isArray(value) ? value[0] : value)
+                return [`${fmtPeso(num)} kg`, etiquetaDeClave(key, nombrePartida, nombreDeAnimal)]
               }}
               labelFormatter={(label: React.ReactNode) => fmtFechaCorta(String(label))}
               contentStyle={{
@@ -141,43 +155,54 @@ export function EvolucionPesos({
               }}
             />
             <Legend wrapperStyle={{ fontSize: 11 }} />
-            {activas.includes('total') && (
-              <Line
-                type="monotone"
-                dataKey="total"
-                name="total"
-                stroke="var(--color-primary)"
-                strokeWidth={2.5}
-                dot={{ r: 3 }}
-              />
+
+            {/* TOTAL: lote (1 partida) o por partida (varias) */}
+            {activas.includes('total') && !multi && (
+              <Line type="monotone" dataKey="totalLote" name="totalLote" stroke="var(--color-primary)" strokeWidth={2.5} dot={{ r: 3 }} connectNulls />
             )}
+            {activas.includes('total') &&
+              multi &&
+              partidas.map((pt, i) => (
+                <Line key={`t${pt.id}`} type="monotone" dataKey={`totalP_${pt.id}`} name={`totalP_${pt.id}`} stroke={colorDe(i)} strokeWidth={2} dot={{ r: 2.5 }} connectNulls />
+              ))}
+
+            {/* PROMEDIO: lote siempre; por partida si hay varias */}
             {activas.includes('promedio') && (
-              <Line
-                type="monotone"
-                dataKey="promedio"
-                name="promedio"
-                stroke="var(--color-info)"
-                strokeWidth={2}
-                strokeDasharray="5 4"
-                dot={{ r: 2.5 }}
-              />
+              <Line type="monotone" dataKey="promLote" name="promLote" stroke="var(--color-info)" strokeWidth={2} strokeDasharray="5 4" dot={{ r: 2.5 }} connectNulls />
             )}
+            {activas.includes('promedio') &&
+              multi &&
+              partidas.map((pt, i) => (
+                <Line key={`p${pt.id}`} type="monotone" dataKey={`promP_${pt.id}`} name={`promP_${pt.id}`} stroke={colorDe(i)} strokeWidth={1.5} strokeDasharray="4 3" dot={{ r: 2 }} connectNulls />
+              ))}
+
+            {/* INDIVIDUALES: una línea por animal */}
             {activas.includes('individuales') &&
               animales.map((a, i) => (
-                <Line
-                  key={a.id}
-                  type="monotone"
-                  dataKey={`a_${a.id}`}
-                  name={`a_${a.id}`}
-                  stroke={PALETA_LOTE[i % PALETA_LOTE.length]}
-                  strokeWidth={1.5}
-                  dot={{ r: 2 }}
-                  connectNulls
-                />
+                <Line key={a.id} type="monotone" dataKey={`a_${a.id}`} name={`a_${a.id}`} stroke={colorDe(i)} strokeWidth={1.5} dot={{ r: 2 }} connectNulls />
               ))}
           </LineChart>
         </ResponsiveContainer>
       </div>
     </div>
   )
+}
+
+const round2 = (n: number) => Math.round(n * 100) / 100
+
+/** Convierte la dataKey interna en una etiqueta legenda/tooltip. */
+function etiquetaDeClave(
+  key: string,
+  nombrePartida: (id: number) => string,
+  nombreDeAnimal: (id: number) => string,
+): string {
+  if (key === 'totalLote') return 'Lote (total)'
+  if (key === 'promLote') return 'Lote (promedio)'
+  const mP = key.match(/^totalP_(\d+)$/)
+  if (mP) return `${nombrePartida(Number(mP[1]))} (total)`
+  const mPr = key.match(/^promP_(\d+)$/)
+  if (mPr) return `${nombrePartida(Number(mPr[1]))} (promedio)`
+  const mA = key.match(/^a_(\d+)$/)
+  if (mA) return nombreDeAnimal(Number(mA[1]))
+  return key
 }

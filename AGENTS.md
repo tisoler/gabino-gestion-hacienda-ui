@@ -53,26 +53,36 @@ El lint del UI usa `eslint.config.js` (sin autofix en el script). No `any` nuevo
    (ej. el select de sexo al crear categorías) y `filter`/`createPayload` en `CatalogoSelect`
    (ej. pelajes de la raza seleccionada). Vistas sys-admin de
    Razas/Categorías: `pages/CatalogoAdmin.tsx` (submenú "Animales" en el Sidebar).
-8. **Animales**: `caravana` requerida (única por lote) y visible en la tabla; `nAnimal` se
-   precarga con el último del lote + 1 (editable, `siguienteN` en `LoteDetalle`). El **sexo no
-   se edita**: se muestra como label inferido de la categoría (`SexoDeCategoria`). El pelaje es
-   catálogo filtrado por la raza (`PelajeSelect` + `lib/catalogos.ts`); raza y categoría usan
-   `CategoriaSelect`/`CatalogoSelect` con alta inline. **Carga masiva** (`CargaMasivaModal`):
-   campos compartidos + cantidad → preview con caravana por animal
-   (`POST /lotes/:id/animales/masiva`).
-9. **Ancho del layout**: `Layout.tsx` usa `w-[95%] max-w-[1800px]` sobre el área de contenido
-   (ya descuenta el sidebar). Las secciones de filtro/alta de las páginas pueden acotarse
-   (`max-w-2xl`), pero las tablas ocupan todo el ancho para evitar scroll horizontal.
-10. **Pesajes**: el peso se guarda SIEMPRE por animal (tabla `pesaje`); el total del lote se
-   deriva sumando. `EditorPesos` maneja el toggle total/animal (total = reparte `total÷N` y
-   previsualiza; animal = inputs por fila y total summarizado). Fecha del pesaje inicial por
-   defecto = hoy, editable. La edición del inicial en `/lotes/:id` está detrás de un botón
-   ("Editar peso inicial") para evitar accidentes; los intermedios se agregan por modal y se
-   editan en su **fila del contenedor de pesos** (botón "Editar" → `EditorPesos` inline con
-   `modoDefault="animal"` prellenado; si cambia la fecha, se borra la columna anterior y se
-   crea la nueva). Las columnas intermedias de la tabla de animales son de **lectura**.
+ 8. **Animales**: `caravana` requerida (única por lote) y visible en la tabla; `nAnimal` se
+    precarga con el último del lote + 1 (editable, `siguienteN` en `LoteDetalle`). El **sexo no
+    se edita**: se muestra como label inferido de la categoría (`SexoDeCategoria`). El pelaje es
+    catálogo filtrado por la raza (`PelajeSelect` + `lib/catalogos.ts`); raza y categoría usan
+    `CategoriaSelect`/`CatalogoSelect` con alta inline. **Cargar animales** (`CargaMasivaModal`):
+    es el ÚNICO alta (no hay alta individual; un animal se carga con cantidad=1). Campos
+    compartidos + cantidad → preview con caravana por animal
+    (`POST /lotes/:id/animales/masiva`). No carga peso: los pesajes van en la sección de
+    pesajes. Si el lote ya tiene animales con pesaje inicial, pide elegir partida (nueva /
+    existente) y, al unir a una partida pesada, exige el peso de los animales nuevos.
+ 9. **Ancho del layout**: `Layout.tsx` usa `w-[95%] max-w-[1800px]` sobre el área de contenido
+    (ya descuenta el sidebar). Las secciones de filtro/alta de las páginas pueden acotarse
+    (`max-w-2xl`), pero las tablas ocupan todo el ancho para evitar scroll horizontal.
+ 10. **Pesajes**: el peso se guarda SIEMPRE por animal (tabla `pesaje`); el total se deriva
+    sumando. `EditorPesos` maneja el toggle total/animal (total = reparte `total÷N` y
+    previsualiza; animal = inputs por fila y total summarizado, **exige todos**). Fecha por
+    defecto = hoy, editable. **INICIAL por partida** (`GrupoInicial`: sub-contenedor por
+    partida con su "Editar"; si el lote tiene 1 sola partida, un único grupo sin división);
+    **INTERMEDIOS del LOTE** (una fila por fecha, `modoDefault="animal"` prellenado; si cambia
+    la fecha se borra la columna anterior y se crea la nueva). Las columnas intermedias de la
+    tabla de animales son de **lectura**. `EvolucionPesos` (recharts) es partida-aware.
+ 11. **Partidas**: tanda de ingreso dentro de un lote (`partida` con `fecha`; `animal.id_partida`).
+    Nombre "Partida N" derivado. La UI oculta la división si hay una sola. `GET /lotes/:id`
+    devuelve `partidas[]` (`id, nombre, fecha, nAnimales, tieneInicial`).
 
 ## Componentes y patrones
+
+- **Modales**: todos usan el mismo fondo `fixed inset-0 ... bg-foreground/40` y cierran al
+  hacer click afuera del panel (`onMouseDown` en el backdrop con `e.target === e.currentTarget`
+  → `onClose`). El panel es hijo directo del backdrop; no mover esa estructura.
 
 - **SelectAutocomplete** (`src/components/SelectAutocomplete.tsx`): select con buscador,
   dropdown en portal. Props: `sort`, `autoSelectSingle`, `defaultFirst`, `clearable`,
@@ -102,8 +112,10 @@ El lint del UI usa `eslint.config.js` (sin autofix en el script). No `any` nuevo
   animal viaja con su lote). Los muertos no se arrastran. El movimiento se persiste tras
   confirmar el modal (ya no es optimista: el modal pide datos obligatorios); en éxito se
   revalidan `/corrales/mapa` y el lote. **Layout**: las enfermerías van arriba y los comunes
-  abajo; **2 columnas** (xl) sólo con `escritura:lote`, y **1 columna** para lectores (sin
-  interacción; el panel de corrales es más angosto para dar ancho a la lista de lotes). Las cards de corral son **colapsables** (header clickeable, expandidas por
+  abajo; **2 columnas** (xl) por defecto con `escritura:lote`, colapsables a **1 columna** con
+  un toggle en el header del mapa (el ancho del panel lo maneja `Lotes.tsx` vía
+  `corralesColapsado`). Para lectores (sin interacción) siempre es 1 columna y el panel es más
+  angosto, para dar ancho a la lista de lotes. Las cards de corral son **colapsables** (header clickeable, expandidas por
   defecto; durante el drag se fuerzan expandidas). Mientras se arrastra aparece un **dock fijo
   al pie** (portal) con
   los destinos válidos (enfermerías, o el corral del lote al traer), para no depender del
@@ -115,24 +127,25 @@ El lint del UI usa `eslint.config.js` (sin autofix en el script). No `any` nuevo
 - **Pesajes** (`lib/pesos.ts` + componentes): la fuente de verdad del peso es `pesaje` (por
   animal). `EditorPesos` (`components/EditorPesos.tsx`) es el editor reutilizable con toggle
   **Peso total de lote / Peso por animal** (total → reparte y previsualiza por animal
-  read-only; animal → inputs por fila y total summarizado read-only). Se usa en: edición
-  inline del peso inicial en `LoteDetalle` (detrás del botón "Editar peso inicial") y en
-  `PesajeIntermedioModal` (agregar pesaje intermedio). `CargaMasivaModal` tiene su propio
-  bloque de peso inicial (checkbox + toggle total/animal). `EvolucionPesos`
-  (`components/EvolucionPesos.tsx`, recharts) grafica el lote en sección colapsable con 3
-  checkboxes: peso total (default), promedio e individuales. En el contenedor de pesos hay
-  **una fila por intermedio** (fecha, "a X días", total kg) con botón "Editar" (inline, mismo
-  componente) y papelera para borrar la columna completa; en la tabla de animales las columnas
-  intermedias ("Peso · DD/MM · Xd") son de lectura.
+  read-only; animal → inputs por fila y total summarizado read-only, **exige todos**). El
+  **pesaje inicial** se edita con `GrupoInicial` (`components/GrupoInicial.tsx`): un grupo por
+  partida si hay varias (sub-contenedores, envía `idPartida`) o uno solo si el lote tiene una
+  (sin división). Los **intermedios** son del lote: `PesajeIntermedioModal` (agregar) y
+  **una fila por intermedio** en el contenedor de pesos (fecha, "a X días", total kg) con botón
+  "Editar" (inline, `modoDefault="animal"`) y papelera para borrar la columna completa; si cambia
+  la fecha se borra la anterior y se crea la nueva. En la tabla de animales las columnas
+  intermedias ("Peso · DD/MM · Xd") son de **lectura**. `EvolucionPesos`
+  (`components/EvolucionPesos.tsx`, recharts) es partida-aware: total (1 línea de lote o 1 por
+  partida), promedio (lote siempre + por partida si hay varias) e individuales.
 - **Contextos**: `AuthContext` (`src/contexts/AuthContext.tsx`) + `ThemeContext`. Los tipos
   viven en `*-context.ts` separados.
 
 ## Rutas principales
 
 `/` (Dashboard) · `/login` · `/mi-empresa` (anfitrión/sys-admin) · `/clientes` (anfitrión/sys-admin,
-clientes + operarios con tabs) · `/lotes` (listado + mapa de corrales a la derecha; muestra
-**columna Empresa** —un cliente puede tener lotes de varias empresas— y el cliente ve "Mis
-lotes", sin columna Cliente y panel de corrales más angosto) ·
+clientes + operarios con tabs) · `/lotes` (listado + mapa de corrales a la derecha; la
+**columna Empresa** sólo aparece para el cliente —puede tener lotes de varias empresas—, que
+además ve "Mis lotes", sin columna Cliente y con el panel de corrales más angosto) ·
 `/lotes/nueva|:id` (detalle: corral/color/proveedor/lugar de origen + titular (cliente o
 anfitrión) + tabla de animales con raza/categoría, toggle de estado Sano/Enfermo/Muerto, enfermería
 y botón de historial de movimientos; el cliente lo ve en modo SÓLO LECTURA) ·

@@ -56,6 +56,7 @@ export function EditorPesos({
     [animales],
   )
   const [modo, setModo] = useState<'total' | 'animal'>(modoDefault)
+  const [error, setError] = useState('')
   const [fecha, setFecha] = useState(fechaInicial || hoyIso())
   const [pesoTotal, setPesoTotal] = useState(sumaActual ? String(sumaActual) : '')
   const [desbasteTotal, setDesbasteTotal] = useState('')
@@ -85,6 +86,7 @@ export function EditorPesos({
   )
 
   const submit = async () => {
+    setError('')
     if (modo === 'total') {
       if (totalNum == null || totalNum <= 0) return
       const desb = parseNum(desbasteTotal)
@@ -95,21 +97,29 @@ export function EditorPesos({
         ...(desb != null ? { desbasteTotal: desb } : {}),
       })
     } else {
-      const rows = animales
-        .map((a) => {
-          const peso = parseNum(filas[a.id]?.peso ?? '')
-          const desb = parseNum(filas[a.id]?.desbaste ?? '')
-          return peso != null
-            ? {
-              animalId: a.id,
-              peso,
-              ...(desb != null ? { desbaste: desb } : {}),
-            }
-            : null
-        })
-        .filter((x): x is NonNullable<typeof x> => x != null)
-      if (rows.length === 0) return
-      await onSubmit({ fecha, modo: 'animal', animales: rows })
+      const rows = animales.map((a) => {
+        const peso = parseNum(filas[a.id]?.peso ?? '')
+        const desb = parseNum(filas[a.id]?.desbaste ?? '')
+        return {
+          animalId: a.id,
+          peso,
+          desbaste: desb,
+        }
+      })
+      // Por animal exige el peso de TODOS los animales del grupo.
+      if (rows.some((r) => r.peso == null)) {
+        setError('Ingresá el peso de todos los animales.')
+        return
+      }
+      await onSubmit({
+        fecha,
+        modo: 'animal',
+        animales: rows.map((r) => ({
+          animalId: r.animalId,
+          peso: r.peso as number,
+          ...(r.desbaste != null ? { desbaste: r.desbaste } : {}),
+        })),
+      })
     }
   }
 
@@ -232,6 +242,10 @@ export function EditorPesos({
             ))}
           </div>
         </div>
+      )}
+
+      {error && (
+        <p role="alert" className="text-sm text-destructive">{error}</p>
       )}
 
       <div className="flex justify-end gap-2">

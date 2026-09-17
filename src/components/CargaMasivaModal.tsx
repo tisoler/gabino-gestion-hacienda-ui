@@ -16,8 +16,8 @@ interface PreviewRow {
 
 export interface CargaMasivaValues {
   idRaza?: number
-  idPelaje: number
-  idCategoria: number
+  idPelaje?: number
+  idCategoria?: number
   cantidad: number
   nuevaPartida?: boolean
   idPartida?: number
@@ -36,11 +36,14 @@ const parseNum = (s: string): number | undefined => {
  * tiene pesaje inicial (para no distorsionar la gráfica).
  */
 export function CargaMasivaModal({
+  loteNombre,
   siguienteN,
   partidas,
   onClose,
   onOk,
 }: {
+  /** Nombre de lote: se usa para precargar las caravanas `{lote}-{i}`. */
+  loteNombre: string
   siguienteN: number
   /** Partidas existentes del lote (para decidir nueva vs unir). */
   partidas: PartidaDto[]
@@ -67,22 +70,26 @@ export function CargaMasivaModal({
 
   const n = parseInt(cantidad, 10)
   const cantidadOk = !isNaN(n) && n > 0 && n <= 500
-  const requeridosOk = !!idPelaje && !!idCategoria && cantidadOk && (!hayPesadas || (destino === 'nueva' || !!idPartida))
+  // Sólo la cantidad es requerida; raza/categoría/pelaje son opcionales y se
+  // pueden completar/editar después (por animal o en masa por partida/lote).
+  const requeridosOk = cantidadOk && (!hayPesadas || (destino === 'nueva' || !!idPartida))
 
   const preview = useMemo<{ nAnimal: number }[]>(() => {
     if (!cantidadOk) return []
     return Array.from({ length: n }, (_, i) => ({ nAnimal: siguienteN + i }))
   }, [cantidadOk, n, siguienteN])
 
-  const rows = preview.map((p) => ({
+  // Caravana precargada `{loteNombre}-{i}` (1,2,3… n). El estado sólo guarda las
+  // que el usuario modifica; si no hay override se usa el default derivado.
+  const defaultCaravana = (i: number) => `${loteNombre}-${i + 1}`
+
+  const rows = preview.map((p, i) => ({
     nAnimal: p.nAnimal,
-    caravana: (caravanas[p.nAnimal] ?? '').trim(),
+    caravana: (caravanas[p.nAnimal] ?? defaultCaravana(i)).trim(),
   }))
 
   const submit = async () => {
     setError('')
-    if (!idPelaje) return setError('El pelaje es obligatorio.')
-    if (!idCategoria) return setError('La categoría es obligatoria.')
     if (!cantidadOk) return setError('Ingresá una cantidad válida (1 a 500).')
     if (rows.length === 0) return
     if (rows.some((r) => !r.caravana)) {
@@ -101,8 +108,8 @@ export function CargaMasivaModal({
     try {
       await onOk({
         ...(idRaza ? { idRaza: Number(idRaza) } : {}),
-        idPelaje: Number(idPelaje),
-        idCategoria: Number(idCategoria),
+        ...(idPelaje ? { idPelaje: Number(idPelaje) } : {}),
+        ...(idCategoria ? { idCategoria: Number(idCategoria) } : {}),
         cantidad: n,
         ...(hayPesadas && destino === 'nueva' ? { nuevaPartida: true } : {}),
         ...(destino === 'existente' && idPartida ? { idPartida: Number(idPartida) } : {}),
@@ -127,9 +134,9 @@ export function CargaMasivaModal({
 
   return (
     <div
-        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-foreground/40 backdrop-blur-sm"
-        onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}
-      >
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-foreground/40 backdrop-blur-sm"
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}
+    >
       <div className="w-full max-w-2xl bg-card border border-border rounded-lg shadow-xl p-6 space-y-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between">
           <h2 className="text-base font-semibold text-foreground">Cargar animales</h2>
@@ -142,14 +149,16 @@ export function CargaMasivaModal({
           </button>
         </div>
         <p className="text-xs text-muted-foreground">
-          Crea una tanda de animales con estos datos compartidos. El peso inicial
-          se carga aparte, en la sección de pesajes.
+          Crea una tanda de animales con estos datos compartidos. Raza, categoría y
+          pelaje son <strong>opcionales</strong> (se pueden cargar o editar después,
+          por animal o en masa por partida/lote). El peso inicial se carga aparte, en
+          la sección de pesajes.
         </p>
 
         <div className="grid gap-x-4 gap-y-3 sm:grid-cols-2">
           <CatalogoSelect
             tipo="raza"
-            label="Raza"
+            label="Raza (opcional)"
             placeholder="Buscar o agregar raza..."
             value={idRaza}
             onChange={setIdRaza}
@@ -184,8 +193,8 @@ export function CargaMasivaModal({
                   type="button"
                   onClick={() => setDestino(d)}
                   className={`px-3 py-1.5 rounded text-xs font-medium transition-colors cursor-pointer ${destino === d
-                      ? 'bg-primary text-primary-foreground shadow-sm'
-                      : 'text-muted-foreground hover:text-foreground'
+                    ? 'bg-primary text-primary-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
                     }`}
                 >
                   {d === 'nueva' ? 'Nueva partida' : 'Partida existente'}
@@ -229,12 +238,12 @@ export function CargaMasivaModal({
               <Users className="size-3.5" strokeWidth={2} /> Preview · {n} animales
             </div>
             <div className="divide-y divide-border max-h-64 overflow-y-auto">
-              {preview.map((p) => (
+              {preview.map((p, i) => (
                 <div key={p.nAnimal} className="flex items-center gap-2 px-3 py-2">
                   <span className="w-10 shrink-0 text-sm font-medium text-foreground">#{p.nAnimal}</span>
                   <input
                     type="text"
-                    value={caravanas[p.nAnimal] ?? ''}
+                    value={caravanas[p.nAnimal] ?? defaultCaravana(i)}
                     onChange={(e) => setCaravanas((s) => ({ ...s, [p.nAnimal]: e.target.value }))}
                     placeholder="Caravana *"
                     className={`${inputCls} flex-1 min-w-0`}
@@ -259,7 +268,7 @@ export function CargaMasivaModal({
           <p className="text-xs text-muted-foreground">
             {hayPesadas && destino === 'existente' && !idPartida
               ? 'Elegí la partida existente.'
-              : 'Completá pelaje, categoría y cantidad para ver el preview.'}
+              : 'Ingresá la cantidad para ver el preview.'}
           </p>
         )}
 

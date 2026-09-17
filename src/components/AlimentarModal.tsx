@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import useSWR from 'swr'
-import { Loader2, X } from 'lucide-react'
+import { Loader2, Plus, X } from 'lucide-react'
 import api, { fetcher } from '../lib/api'
 import SelectAutocomplete from './SelectAutocomplete'
 import type { CorralOpcion, DietaOpcion } from '../lib/alimentacion'
@@ -15,10 +15,25 @@ const hoyIso = (): string => {
   return `${d.getFullYear()}-${m}-${day}`
 }
 
+interface Fila {
+  key: number
+  idDieta: string | number
+  fecha: string
+  cantidad: string
+}
+
+let proxKey = 1
+const nuevaFila = (prev?: Fila): Fila => ({
+  key: proxKey++,
+  idDieta: prev?.idDieta ?? '',
+  fecha: prev?.fecha ?? hoyIso(),
+  cantidad: '',
+})
+
 /**
- * Alimentar corral: elige corral, dieta (activas: globales + de la empresa),
- * cantidad (kg) y fecha. El server reparte la cantidad entre los lotes del
- * corral en proporción a sus animales vivos.
+ * Alimentar corral: el corral es fijo arriba y se cargan UNA O MÁS filas
+ * (dieta + fecha + cantidad). Cada fila es una alimentación para ese día.
+ * La fila nueva hereda la fecha y la dieta de la anterior.
  */
 export function AlimentarModal({
   initialCorralId,
@@ -33,9 +48,7 @@ export function AlimentarModal({
   const { data: dietas } = useSWR<DietaOpcion[]>('/dietas', fetcher)
 
   const [idCorral, setIdCorral] = useState<string | number>(initialCorralId ?? '')
-  const [idDieta, setIdDieta] = useState<string | number>('')
-  const [cantidad, setCantidad] = useState('')
-  const [fecha, setFecha] = useState(hoyIso())
+  const [filas, setFilas] = useState<Fila[]>([nuevaFila()])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
@@ -51,20 +64,34 @@ export function AlimentarModal({
   // /dietas (sin `estado`) ya devuelve sólo las activas (globales + de la empresa).
   const dietasOpciones = useMemo(() => dietas ?? [], [dietas])
 
-  const n = parseFloat(cantidad.replace(',', '.'))
-  const cantidadOk = !isNaN(n) && n > 0
-  const listo = idCorral !== '' && idDieta !== '' && cantidadOk && !!fecha
+  const setFila = (key: number, patch: Partial<Fila>) =>
+    setFilas((fs) => fs.map((f) => (f.key === key ? { ...f, ...patch } : f)))
+
+  const quitarFila = (key: number) => setFilas((fs) => fs.filter((f) => f.key !== key))
+
+  const agregarFila = () => {
+    const ultima = filas[filas.length - 1]
+    setFilas((fs) => [...fs, nuevaFila(ultima)])
+  }
+
+  const filasValidas = filas.every((f) => {
+    const n = parseFloat(f.cantidad.replace(',', '.'))
+    return f.idDieta !== '' && !!f.fecha && !isNaN(n) && n > 0
+  })
+  const listo = idCorral !== '' && filas.length > 0 && filasValidas
 
   const submit = async () => {
     setError('')
     if (!listo) return
     setBusy(true)
     try {
-      await api.post('/alimentaciones', {
+      await api.post('/alimentaciones/masiva', {
         idCorral: Number(idCorral),
-        idDieta: Number(idDieta),
-        cantidadKg: n,
-        fecha,
+        filas: filas.map((f) => ({
+          idDieta: Number(f.idDieta),
+          cantidadKg: parseFloat(f.cantidad.replace(',', '.')),
+          fecha: f.fecha,
+        })),
       })
       await onSaved()
       onClose()
@@ -81,9 +108,11 @@ export function AlimentarModal({
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-foreground/40 backdrop-blur-sm"
-      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose()
+      }}
     >
-      <div className="w-full max-w-md bg-card border border-border rounded-lg shadow-xl p-6 space-y-4">
+      <div className="w-full max-w-2xl bg-card border border-border rounded-lg shadow-xl p-6 space-y-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between">
           <h2 className="text-base font-semibold text-foreground">Alimentar corral</h2>
           <button
@@ -95,10 +124,11 @@ export function AlimentarModal({
           </button>
         </div>
         <p className="text-xs text-muted-foreground">
-          La cantidad se reparte entre los lotes del corral según sus animales vivos
-          (los de enfermería cuentan; los muertos no).
+          La cantidad de cada fila se reparte entre los lotes del corral según sus animales
+          vivos (los de enfermería cuentan; los muertos no).
         </p>
 
+        {/* Corral: único, siempre arriba */}
         <SelectAutocomplete
           label="Corral *"
           placeholder="Elegir corral..."
@@ -111,37 +141,71 @@ export function AlimentarModal({
           clearable={false}
         />
 
-        <SelectAutocomplete
-          label="Dieta *"
-          placeholder="Elegir dieta activa..."
-          value={idDieta}
-          onChange={setIdDieta}
-          options={dietasOpciones.map((d) => ({ value: d.id, label: `${d.nombre} (v${d.version})` }))}
-          clearable={false}
-        />
+        {/* Filas */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-medium text-foreground">Alimentaciones ({filas.length})</label>
+            <button
+              onClick={agregarFila}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium border border-border hover:bg-accent transition-colors cursor-pointer"
+            >
+              <Plus className="size-3.5" strokeWidth={2} /> Agregar fila
+            </button>
+          </div>
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-foreground">Cantidad (kg) *</label>
-            <input
-              type="number"
-              min={0}
-              step="0.01"
-              value={cantidad}
-              onChange={(e) => setCantidad(e.target.value)}
-              className={`${inputCls} w-full`}
-              placeholder="Ej: 2500"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-foreground">Fecha *</label>
-            <input
-              type="date"
-              value={fecha}
-              onChange={(e) => setFecha(e.target.value)}
-              className={`${inputCls} w-full`}
-            />
-          </div>
+          {filas.map((f, i) => (
+            <div key={f.key} className="border border-border rounded-md p-3">
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Fila {i + 1}
+                </span>
+                {filas.length > 1 && (
+                  <button
+                    onClick={() => quitarFila(f.key)}
+                    title="Quitar fila"
+                    className="p-1 rounded-md text-muted-foreground hover:bg-destructive-soft hover:text-destructive transition-colors cursor-pointer"
+                  >
+                    <X className="size-3.5" strokeWidth={2} />
+                  </button>
+                )}
+              </div>
+              <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto_auto]">
+                <SelectAutocomplete
+                  label="Dieta *"
+                  placeholder="Elegir dieta..."
+                  value={f.idDieta}
+                  onChange={(v) => setFila(f.key, { idDieta: v })}
+                  options={dietasOpciones.map((d) => ({
+                    value: d.id,
+                    label: `${d.nombre} (v${d.version})`,
+                  }))}
+                  clearable={false}
+                />
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-foreground">Fecha *</label>
+                  <input
+                    type="date"
+                    value={f.fecha}
+                    onChange={(e) => setFila(f.key, { fecha: e.target.value })}
+                    className={`${inputCls} w-full`}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-foreground">Cantidad (kg) *</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={f.cantidad}
+                    onChange={(e) => setFila(f.key, { cantidad: e.target.value })}
+                    className={`${inputCls} w-full`}
+                    placeholder="Ej: 2500"
+                  />
+                </div>
+                <div className="hidden sm:block" aria-hidden />
+              </div>
+            </div>
+          ))}
         </div>
 
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
@@ -159,7 +223,7 @@ export function AlimentarModal({
             className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium shadow-sm hover:opacity-90 transition-opacity disabled:opacity-50 cursor-pointer"
           >
             {busy ? <Loader2 className="size-4 animate-spin" /> : null}
-            Registrar alimentación
+            Registrar {filas.length} alimentación{filas.length !== 1 ? 'es' : ''}
           </button>
         </div>
       </div>

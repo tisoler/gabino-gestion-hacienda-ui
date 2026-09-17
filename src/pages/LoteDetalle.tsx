@@ -20,6 +20,7 @@ import {
   Flag,
   Utensils,
   LogOut,
+  Wand2,
 } from 'lucide-react'
 import api, { fetcher } from '../lib/api'
 import { useAuth } from '../contexts/auth-context'
@@ -34,6 +35,7 @@ import {
 } from '../components/AnimalCatalogos'
 import { pelajeAptoParaRaza } from '../lib/catalogos'
 import { CargaMasivaModal, type CargaMasivaValues } from '../components/CargaMasivaModal'
+import { EdicionMasivaModal, type EdicionMasivaValues } from '../components/EdicionMasivaModal'
 import { EditorPesos, type EditorAnimalRow } from '../components/EditorPesos'
 import { GrupoInicial } from '../components/GrupoInicial'
 import { PesajeIntermedioModal } from '../components/PesajeIntermedioModal'
@@ -194,6 +196,7 @@ export default function LoteDetalle() {
 
   const [animalModal, setAnimalModal] = useState<{ open: boolean; animal?: Animal }>({ open: false })
   const [masivaModal, setMasivaModal] = useState(false)
+  const [edicionMasivaModal, setEdicionMasivaModal] = useState(false)
   const [enviarModal, setEnviarModal] = useState<{ animal: Animal; enfermerias: EnfermeriaOpcion[] } | null>(null)
   const [traerModal, setTraerModal] = useState<Animal | null>(null)
   const [estadoModal, setEstadoModal] = useState<{ animal: Animal; estado: string } | null>(null)
@@ -428,6 +431,12 @@ export default function LoteDetalle() {
     await mutateLote()
   }
 
+  const handleEdicionMasivaSave = async (vals: EdicionMasivaValues) => {
+    if (!lote) return
+    await api.post(`/lotes/${lote.id}/animales/edicion-masiva`, vals)
+    await mutateLote()
+  }
+
   const handleAnimalDelete = async (a: Animal) => {
     if (!lote) return
     if (!window.confirm(`¿Eliminar el animal ${a.nAnimal ?? a.id}?`)) return
@@ -547,14 +556,6 @@ export default function LoteDetalle() {
         >
           <ArrowLeft className="size-4" strokeWidth={2} /> Volver a lotes
         </button>
-        {puedeVerSalidas && lote && (
-          <button
-            onClick={() => navigate(`/salidas?lote=${lote.id}`)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium border border-border hover:bg-accent transition-colors cursor-pointer"
-          >
-            <LogOut className="size-4" strokeWidth={2} /> Salidas del lote
-          </button>
-        )}
       </div>
 
       {error && (
@@ -587,13 +588,25 @@ export default function LoteDetalle() {
             readOnly={!puedeEscribir}
             onSubmit={handleGuardarLote}
             headerExtra={
-              puedeVerAlimento ? (
-                <button
-                  onClick={() => navigate(`/alimentacion?lote=${lote.id}`)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium border border-border hover:bg-accent transition-colors cursor-pointer"
-                >
-                  <Utensils className="size-4" strokeWidth={2} /> Alimentación del lote
-                </button>
+              (puedeVerSalidas || puedeVerAlimento) ? (
+                <div className="flex items-center gap-2">
+                  {puedeVerAlimento && (
+                    <button
+                      onClick={() => navigate(`/alimentacion?lote=${lote.id}`)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium border border-border hover:bg-accent transition-colors cursor-pointer"
+                    >
+                      <Utensils className="size-4" strokeWidth={2} /> Alimentación del lote
+                    </button>
+                  )}
+                  {puedeVerSalidas && (
+                    <button
+                      onClick={() => navigate(`/salidas?lote=${lote.id}`)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium border border-border hover:bg-accent transition-colors cursor-pointer"
+                    >
+                      <LogOut className="size-4" strokeWidth={2} /> Salidas del lote
+                    </button>
+                  )}
+                </div>
               ) : undefined
             }
           />
@@ -848,12 +861,22 @@ export default function LoteDetalle() {
                 </p>
               </div>
               {puedeEscribir && (
-                <button
-                  onClick={() => setMasivaModal(true)}
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium shadow-sm hover:opacity-90 transition-opacity cursor-pointer"
-                >
-                  <Plus className="size-4" strokeWidth={2} /> Cargar animales
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setEdicionMasivaModal(true)}
+                    disabled={lote.animales.length === 0}
+                    title={lote.animales.length === 0 ? 'No hay animales' : 'Editar raza/categoría/pelaje en masa'}
+                    className="inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium border border-border hover:bg-accent transition-colors disabled:opacity-50 cursor-pointer"
+                  >
+                    <Wand2 className="size-4" strokeWidth={2} /> Editar en masa
+                  </button>
+                  <button
+                    onClick={() => setMasivaModal(true)}
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium shadow-sm hover:opacity-90 transition-opacity cursor-pointer"
+                  >
+                    <Plus className="size-4" strokeWidth={2} /> Cargar animales
+                  </button>
+                </div>
               )}
             </div>
 
@@ -1016,10 +1039,19 @@ export default function LoteDetalle() {
 
       {masivaModal && lote && (
         <CargaMasivaModal
+          loteNombre={lote.nombre}
           siguienteN={siguienteN}
           partidas={partidas}
           onClose={() => setMasivaModal(false)}
           onOk={handleMasivaSave}
+        />
+      )}
+
+      {edicionMasivaModal && lote && (
+        <EdicionMasivaModal
+          lote={lote}
+          onClose={() => setEdicionMasivaModal(false)}
+          onOk={handleEdicionMasivaSave}
         />
       )}
 
@@ -1493,9 +1525,9 @@ function AnimalModal({
 
   return (
     <div
-        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-foreground/40 backdrop-blur-sm"
-        onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}
-      >
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-foreground/40 backdrop-blur-sm"
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}
+    >
       <div className="w-full max-w-2xl bg-card border border-border rounded-lg shadow-xl p-6 space-y-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between">
           <h2 className="text-base font-semibold text-foreground">

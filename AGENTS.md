@@ -60,9 +60,18 @@ El lint del UI usa `eslint.config.js` (sin autofix en el script). No `any` nuevo
     `CategoriaSelect`/`CatalogoSelect` con alta inline. **Cargar animales** (`CargaMasivaModal`):
     es el ÚNICO alta (no hay alta individual; un animal se carga con cantidad=1). Campos
     compartidos + cantidad → preview con caravana por animal
-    (`POST /lotes/:id/animales/masiva`). No carga peso: los pesajes van en la sección de
-    pesajes. Si el lote ya tiene animales con pesaje inicial, pide elegir partida (nueva /
-    existente) y, al unir a una partida pesada, exige el peso de los animales nuevos.
+    (`POST /lotes/:id/animales/masiva`). **Sólo la cantidad es requerida**; raza, categoría y
+    pelaje son opcionales (se editan después por animal o en masa). Las **caravanas se
+    precargan** como `{loteId}-{i}` (1,2,3… n) y son editables (override por animal). No carga
+    peso: los pesajes van en la sección de pesajes. Si el lote ya tiene animales con pesaje
+    inicial, pide elegir partida (nueva / existente) y, al unir a una partida pesada, exige el
+    peso de los animales nuevos.
+- **Edición en masa** (`components/EdicionMasivaModal.tsx`): raza/categoría/pelaje para los
+  animales del **lote** o de una **partida** (`POST /lotes/:id/animales/edicion-masiva`). Arriba
+  el alcance + los campos "aplicar a todos" (setean el valor en todos los del alcance); abajo el
+  listado permite **ajustar cada animal** individualmente, con un **X para apartarlo** (no se
+  modifica; se listan en "Apartados para después" y se pueden volver a incluir). Campo sin
+  cambio no se envía; limpiar una celda borra el valor (null).
  9. **Ancho del layout**: `Layout.tsx` usa `w-[95%] max-w-[1800px]` sobre el área de contenido
     (ya descuenta el sidebar). Las secciones de filtro/alta de las páginas pueden acotarse
     (`max-w-2xl`), pero las tablas ocupan todo el ancho para evitar scroll horizontal.
@@ -142,9 +151,11 @@ El lint del UI usa `eslint.config.js` (sin autofix en el script). No `any` nuevo
   elige Global o una empresa (`idEmpresa` null/número) y ve badge "Global"; una dieta global
   sólo la gestiona el admin (`puedeGestionar`) y sus ingredientes deben ser globales.
 - **Alimentación** (`pages/Alimentacion.tsx`, `components/AlimentarModal.tsx`, tipos en
-  `lib/alimentacion.ts`): el modal elige corral, dieta (activas globales + de la empresa),
-  cantidad y fecha (`POST /alimentaciones`; la cantidad es la del CORRAL; los animales del lote
-  en enfermería reciben una estimación extra a la misma tasa — ver DESIGN del server). El
+  `lib/alimentacion.ts`): el modal de carga tiene el corral fijo arriba y permite **varias
+  filas** (dieta + fecha + cantidad por fila; botón "+ Agregar fila", la fila nueva hereda
+  fecha y dieta de la anterior). Envía `POST /alimentaciones/masiva` (la cantidad es la del
+  CORRAL; los animales del lote en enfermería reciben una estimación extra a la misma tasa —
+  ver DESIGN del server). El
   histórico muestra el desglose corral/enfermería (kg y nº de animales) por evento y por lote.
   El botón "Alimentar" está en `/lotes` (junto a "Nuevo lote", sin corral) y en cada card de
   `CorralMapa` (corral preseleccionado, `onAlimentar(corralId)`). La vista `/alimentacion`

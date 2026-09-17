@@ -207,7 +207,7 @@ export default function Salidas() {
                     </div>
                     <div>
                       <p className="text-sm font-semibold text-foreground">
-                        {s.lote.nombre} · {SALIDA_TIPO_LABELS[s.tipo] ?? s.tipo}
+                        {s.lote.nombre} · Corral: {s.corral?.nombre ?? '—'} · {SALIDA_TIPO_LABELS[s.tipo] ?? s.tipo}
                       </p>
                       <p className="text-xs text-muted-foreground">
                         {fmtFecha(s.fecha)} · {s.nAnimales} animales ·{' '}
@@ -269,6 +269,13 @@ export default function Salidas() {
                   accessor: (s) => (
                     <div>
                       <p className="font-medium text-foreground">{s.lote.nombre}</p>
+                    </div>
+                  ),
+                },
+                {
+                  header: 'Corral',
+                  accessor: (s) => (
+                    <div>
                       {s.corral && <p className="text-xs text-muted-foreground">{s.corral.nombre}</p>}
                     </div>
                   ),
@@ -326,13 +333,13 @@ export default function Salidas() {
                 },
                 ...(isSysAdmin
                   ? [
-                      {
-                        header: 'Empresa',
-                        accessor: (s: SalidaView) => (
-                          <span className="text-muted-foreground">{s.empresa?.nombre ?? '—'}</span>
-                        ),
-                      },
-                    ]
+                    {
+                      header: 'Empresa',
+                      accessor: (s: SalidaView) => (
+                        <span className="text-muted-foreground">{s.empresa?.nombre ?? '—'}</span>
+                      ),
+                    },
+                  ]
                   : []),
               ]}
             />

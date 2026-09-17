@@ -8,6 +8,7 @@ import type { CargarPesajesPayload } from '../lib/pesos'
  */
 export function PesajeIntermedioModal({
   animales,
+  salidos,
   busy,
   titulo = 'Agregar pesaje intermedio',
   descripcion = 'Registra un peso para una fecha nueva. En el lote aparecerá como una columna «Peso a X días» respecto del pesaje inicial.',
@@ -16,6 +17,8 @@ export function PesajeIntermedioModal({
   onOk,
 }: {
   animales: EditorAnimalRow[]
+  /** Animales ya salidos (pesaje final): se listan al final, sólo lectura. */
+  salidos?: EditorAnimalRow[]
   busy?: boolean
   titulo?: string
   descripcion?: string
@@ -44,6 +47,7 @@ export function PesajeIntermedioModal({
         <p className="text-xs text-muted-foreground">{descripcion}</p>
         <EditorPesos
           animales={animales}
+          salidos={salidos}
           submitLabel={submitLabel}
           busy={busy}
           onSubmit={onOk}

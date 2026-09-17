@@ -1,11 +1,12 @@
 import { useState } from 'react'
-import useSWR from 'swr'
+import useSWR, { useSWRConfig } from 'swr'
 import { useNavigate } from 'react-router-dom'
-import { Plus, ArrowRight, Loader2 } from 'lucide-react'
+import { Plus, ArrowRight, Loader2, Utensils } from 'lucide-react'
 import { fetcher } from '../lib/api'
 import { useAuth } from '../contexts/auth-context'
 import { Table } from '../components/Table'
 import { CorralMapa } from '../components/CorralMapa'
+import { AlimentarModal } from '../components/AlimentarModal'
 
 export interface LoteResumen {
   id: number
@@ -32,11 +33,15 @@ const fmtFecha = (f: string | null): string => {
 export default function Lotes() {
   const navigate = useNavigate()
   const { permisos, isCliente } = useAuth()
+  const { mutate } = useSWRConfig()
   // El cliente (sin escritura:lote) sólo puede VER; no crea ni entra a editar.
   const puedeEscribir = permisos.includes('escritura:lote')
+  const puedeAlimentar = permisos.includes('escritura:alimento')
   // Los que pueden mover arrastrando pueden colapsar el panel de corrales a
   // 1 columna para darle más ancho a la tabla de lotes. Por defecto expandido.
   const [corralesColapsado, setCorralesColapsado] = useState(false)
+  const [alimentarOpen, setAlimentarOpen] = useState(false)
+  const [alimentarCorralId, setAlimentarCorralId] = useState<number | undefined>(undefined)
   const panelColapsado = !puedeEscribir || corralesColapsado
 
   const { data: lotes, isLoading } = useSWR<LoteResumen[]>('/lotes', fetcher, {
@@ -54,14 +59,24 @@ export default function Lotes() {
             Partidas de animales y su ubicación en corrales.
           </p>
         </div>
-        {puedeEscribir && (
-          <button
-            onClick={() => navigate('/lotes/nueva')}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium shadow-sm hover:opacity-90 transition-opacity cursor-pointer"
-          >
-            <Plus className="size-4" strokeWidth={2} /> Nuevo lote
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {puedeAlimentar && (
+            <button
+              onClick={() => setAlimentarOpen(true)}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium border border-border hover:bg-accent transition-colors cursor-pointer"
+            >
+              <Utensils className="size-4" strokeWidth={2} /> Alimentar
+            </button>
+          )}
+          {puedeEscribir && (
+            <button
+              onClick={() => navigate('/lotes/nueva')}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium shadow-sm hover:opacity-90 transition-opacity cursor-pointer"
+            >
+              <Plus className="size-4" strokeWidth={2} /> Nuevo lote
+            </button>
+          )}
+        </div>
       </div>
 
       <div
@@ -165,8 +180,27 @@ export default function Lotes() {
           puedeColapsar={puedeEscribir}
           colapsado={panelColapsado}
           onToggleColapso={() => setCorralesColapsado((v) => !v)}
+          puedeAlimentar={puedeAlimentar}
+          onAlimentar={(corralId) => {
+            setAlimentarCorralId(corralId)
+            setAlimentarOpen(true)
+          }}
         />
       </div>
+
+      {alimentarOpen && (
+        <AlimentarModal
+          initialCorralId={alimentarCorralId}
+          onClose={() => {
+            setAlimentarOpen(false)
+            setAlimentarCorralId(undefined)
+          }}
+          onSaved={async () => {
+            await mutate('/corrales/mapa')
+            await mutate('/alimentaciones')
+          }}
+        />
+      )}
     </div>
   )
 }

@@ -68,12 +68,22 @@ El lint del UI usa `eslint.config.js` (sin autofix en el script). No `any` nuevo
     (`max-w-2xl`), pero las tablas ocupan todo el ancho para evitar scroll horizontal.
  10. **Pesajes**: el peso se guarda SIEMPRE por animal (tabla `pesaje`); el total se deriva
     sumando. `EditorPesos` maneja el toggle total/animal (total = reparte `total÷N` y
-    previsualiza; animal = inputs por fila y total summarizado, **exige todos**). Fecha por
-    defecto = hoy, editable. **INICIAL por partida** (`GrupoInicial`: sub-contenedor por
-    partida con su "Editar"; si el lote tiene 1 sola partida, un único grupo sin división);
-    **INTERMEDIOS del LOTE** (una fila por fecha, `modoDefault="animal"` prellenado; si cambia
-    la fecha se borra la columna anterior y se crea la nueva). Las columnas intermedias de la
-    tabla de animales son de **lectura**. `EvolucionPesos` (recharts) es partida-aware.
+    previsualiza; animal = inputs por fila y total summarizado, **exige todos**) y acepta
+    `salidos` (animales ya egresados listados al final, sólo lectura con su peso registrado;
+    fuerza modo por animal). Los editores usan sólo animales VIVOS (sano/enfermo): muertos y
+    salidos no se pesan. Fecha por defecto = hoy, editable. **INICIAL por partida** (`GrupoInicial`);
+    **INTERMEDIOS del LOTE** (una fila por fecha); **FINAL del lote** con los salidos al final.
+    Las columnas intermedias de la tabla de animales son de **lectura**. `EvolucionPesos`
+    (recharts) es partida-aware y tiene un **toggle "Incluir entregados"** (por defecto excluye
+    salidos; los muertos siempre se excluyen de total/promedio).
+11. **Salidas** (`pages/Salidas.tsx`, `components/SalidaModal.tsx`, tipos en `lib/salidas.ts`):
+    dar salida a animales vivos por **Lote / Partida / Animales** (checkboxes). Los que no
+    tienen pesaje final lo cargan en el modal (obligatorio); al confirmar se registra la salida
+    y el animal pasa a estado 'Salido' (badge en la tabla, sin toggle de estado ni enfermería).
+    El botón "Dar salida" está en la sección Pesajes del lote (`escritura:salida`); "Salidas del
+    lote" navega a `/salidas?lote=`. La vista lista con **filtros encadenados**
+    (cliente/corral/lote/partida + rango de fechas), cards mobile + **tabla** desktop, con peso
+    inicial → final y la **diferencia del grupo** (+ desglose por animal).
  11. **Partidas**: tanda de ingreso dentro de un lote (`partida` con `fecha`; `animal.id_partida`).
     Nombre "Partida N" derivado. La UI oculta la división si hay una sola. `GET /lotes/:id`
     devuelve `partidas[]` (`id, nombre, fecha, nAnimales, tieneInicial`).
@@ -122,6 +132,25 @@ El lint del UI usa `eslint.config.js` (sin autofix en el script). No `any` nuevo
   scroll cuando hay muchos corrales. Un común puede compartir **varios lotes**: el `/corrales/mapa`
   expone `loteIds[]` y "traer" es válido al soltar en un común cuyo `loteIds` incluya el lote
   del animal (las fichas de varios lotes conviven en la misma tarjeta, cada una con su color).
+- **Dietas** (`pages/Dietas.tsx`, `components/DietaFormModal.tsx`,
+  `components/CalculadoraDietas.tsx`, tipos en `lib/dietas.ts`): módulo de alimentación.
+  Izquierda lista de dietas (el lector ve activas; con `escritura:dieta` todas + toggle
+  activar/desactivar + "Nueva versión" + "Historial"); derecha calculadora (dieta + kg a
+  preparar, default 2500 → kg por ingrediente). El modal de alta usa `CatalogoSelect
+  tipo="ingrediente"` por fila + % (suma debe dar 100, el nuevo ingrediente trae el
+  restante). Una dieta no se edita: se versiona (`POST /dietas`). **Alcance**: el sys-admin
+  elige Global o una empresa (`idEmpresa` null/número) y ve badge "Global"; una dieta global
+  sólo la gestiona el admin (`puedeGestionar`) y sus ingredientes deben ser globales.
+- **Alimentación** (`pages/Alimentacion.tsx`, `components/AlimentarModal.tsx`, tipos en
+  `lib/alimentacion.ts`): el modal elige corral, dieta (activas globales + de la empresa),
+  cantidad y fecha (`POST /alimentaciones`; la cantidad es la del CORRAL; los animales del lote
+  en enfermería reciben una estimación extra a la misma tasa — ver DESIGN del server). El
+  histórico muestra el desglose corral/enfermería (kg y nº de animales) por evento y por lote.
+  El botón "Alimentar" está en `/lotes` (junto a "Nuevo lote", sin corral) y en cada card de
+  `CorralMapa` (corral preseleccionado, `onAlimentar(corralId)`). La vista `/alimentacion`
+  lista con **filtros encadenados** (cliente/corral/lote se filtran entre sí sin el rango de
+  fechas) y recibe `?lote=` para preseleccionar el lote desde `/lotes/:id`. En mobile se ven
+  **cards** y en desktop una **tabla**.
 - **CowIcon** (`src/components/CowIcon.tsx`): icono de vaca placeholder (la versión de
   lucide-react instalada no exporta "Cow"). Reemplazar por la marca final cuando exista.
 - **Pesajes** (`lib/pesos.ts` + componentes): la fuente de verdad del peso es `pesaje` (por
@@ -151,7 +180,13 @@ anfitrión) + tabla de animales con raza/categoría, toggle de estado Sano/Enfer
 y botón de historial de movimientos; el cliente lo ve en modo SÓLO LECTURA) ·
 `/corrales` (alta/edición/deshabilitar; con `lectura:corral`, **oculta al cliente** vía
 `ocultarParaCliente` en el Sidebar) · `/animales/razas` y `/animales/categorias` (sys-admin,
-submenú "Animales" en el Sidebar) · `/usuarios` (sys-admin, asignar roles) ·
+submenú "Animales" en el Sidebar) · `/dietas` (módulo de alimentación: lista de dietas +
+calculadora de raciones; `lectura:dieta` ve activas, `escritura:dieta` versiona y
+activa/desactiva) · `/alimentacion` (histórico de alimentaciones con filtros encadenados por
+cliente/corral/lote/rango de fechas; `lectura:alimento` ve, `escritura:alimento` registra
+desde `/lotes` o el mapa de corrales) · `/salidas` (histórico de salidas con filtros por
+cliente/corral/lote/partida/fechas y la diferencia de peso del grupo; `lectura:salida` ve,
+`escritura:salida` registra desde la sección Pesajes del lote) · `/usuarios` (sys-admin, asignar roles) ·
 `/configuracion` (sys-admin, limpiar caché)
 
 **Cliente**: el **mapa de Lotes** (`/corrales/mapa`) usa `lectura:lote` y el server lo filtra a

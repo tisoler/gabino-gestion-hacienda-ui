@@ -17,6 +17,7 @@ interface AnimalMin {
   nAnimal: number | null
   caravana: string | null
   idPartida: number | null
+  estado: string
 }
 
 type Serie = 'total' | 'promedio' | 'individuales'
@@ -42,23 +43,38 @@ export function EvolucionPesos({
   partidas: PartidaDto[]
 }) {
   const [activas, setActivas] = useState<Serie[]>(['total'])
+  // Gráficas sin muertos (siempre). "Incluir entregados" suma los salidos.
+  const [incluirEntregados, setIncluirEntregados] = useState(false)
   const multi = partidas.length > 1
+
+  const incluidos = useMemo(
+    () =>
+      animales.filter(
+        (a) => a.estado !== 'muerto' && (incluirEntregados || a.estado !== 'salido'),
+      ),
+    [animales, incluirEntregados],
+  )
+  const idsIncluidos = useMemo(() => new Set(incluidos.map((a) => a.id)), [incluidos])
+  const pesajesVisibles = useMemo(
+    () => pesajes.filter((p) => idsIncluidos.has(p.animalId)),
+    [pesajes, idsIncluidos],
+  )
 
   const fechas = useMemo(() => {
     const set = new Set<string>()
-    for (const p of pesajes) set.add(p.fecha)
+    for (const p of pesajesVisibles) set.add(p.fecha)
     return Array.from(set).sort()
-  }, [pesajes])
+  }, [pesajesVisibles])
 
   const animalById = useMemo(
-    () => new Map(animales.map((a) => [a.id, a])),
-    [animales],
+    () => new Map(incluidos.map((a) => [a.id, a])),
+    [incluidos],
   )
 
   // Pivot por fecha: lote total/promedio, por partida total/promedio, por animal.
   const data = useMemo(() => {
     return fechas.map((fecha) => {
-      const delDia = pesajes.filter((p) => p.fecha === fecha)
+      const delDia = pesajesVisibles.filter((p) => p.fecha === fecha)
       const loteSuma = delDia.reduce((acc, p) => acc + Number(p.peso), 0)
       const row: Record<string, number | string> = {
         fecha,
@@ -68,7 +84,7 @@ export function EvolucionPesos({
       // Por partida (total y promedio).
       for (const pt of partidas) {
         const idsPartida = new Set(
-          animales.filter((a) => a.idPartida === pt.id).map((a) => a.id),
+          incluidos.filter((a) => a.idPartida === pt.id).map((a) => a.id),
         )
         const dePartida = delDia.filter((p) => idsPartida.has(p.animalId))
         const suma = dePartida.reduce((acc, p) => acc + Number(p.peso), 0)
@@ -82,7 +98,7 @@ export function EvolucionPesos({
       }
       return row
     })
-  }, [fechas, pesajes, partidas, animales, animalById])
+  }, [fechas, pesajesVisibles, partidas, incluidos, animalById])
 
   const toggle = (s: Serie) =>
     setActivas((prev) =>
@@ -122,6 +138,15 @@ export function EvolucionPesos({
         {checkbox('total', multi ? 'Peso total por partida' : 'Peso total del lote')}
         {checkbox('promedio', multi ? 'Promedio (lote y partidas)' : 'Peso promedio')}
         {checkbox('individuales', 'Pesos individuales')}
+        <label className="inline-flex items-center gap-1.5 text-xs font-medium text-foreground cursor-pointer ml-auto">
+          <input
+            type="checkbox"
+            checked={incluirEntregados}
+            onChange={(e) => setIncluirEntregados(e.target.checked)}
+            className="size-3.5 accent-[var(--color-primary)] cursor-pointer"
+          />
+          Incluir entregados
+        </label>
       </div>
 
       <div className="h-72 w-full">
@@ -178,7 +203,7 @@ export function EvolucionPesos({
 
             {/* INDIVIDUALES: una línea por animal */}
             {activas.includes('individuales') &&
-              animales.map((a, i) => (
+              incluidos.map((a, i) => (
                 <Line key={a.id} type="monotone" dataKey={`a_${a.id}`} name={`a_${a.id}`} stroke={colorDe(i)} strokeWidth={1.5} dot={{ r: 2 }} connectNulls />
               ))}
           </LineChart>

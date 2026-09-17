@@ -85,6 +85,9 @@ export default function SelectAutocomplete({
     return [...options].sort((a, b) => a.label.localeCompare(b.label, 'es') * dir)
   }, [options, sort.direction])
 
+  const matches = (v: string | number, opt: SelectAutocompleteOption) =>
+    String(opt.value) === String(v)
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
     if (!q) return sorted
@@ -120,9 +123,9 @@ export default function SelectAutocomplete({
 
   // Auto-selección cuando hay una sola opción.
   useEffect(() => {
-    if (autoSelectSingle && sorted.length === 1 && value !== sorted[0].value) {
+    if (autoSelectSingle && sorted.length === 1 && !matches(value, sorted[0])) {
       onChange(sorted[0].value)
-    } else if (defaultFirst && sorted.length > 0 && value === '' && value !== sorted[0].value) {
+    } else if (defaultFirst && sorted.length > 0 && value === '' && !matches(value, sorted[0])) {
       onChange(sorted[0].value)
     }
   }, [autoSelectSingle, defaultFirst, sorted, value, onChange])
@@ -177,7 +180,7 @@ export default function SelectAutocomplete({
     setSearch('')
   }
 
-  const selected = sorted.find((o) => o.value === value)
+  const selected = sorted.find((o) => matches(value, o))
 
   const dropdown = open && !disabled && pos
     ? createPortal(
@@ -214,7 +217,7 @@ export default function SelectAutocomplete({
               )
             ) : (
               filtered.map((o) => {
-                const isSelected = o.value === value
+                const isSelected = matches(value, o)
                 return (
                   <button
                     key={o.value}

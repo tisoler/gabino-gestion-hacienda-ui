@@ -1,7 +1,7 @@
 import { useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import useSWR, { useSWRConfig } from 'swr'
-import { Fence, Loader2, AlertCircle, Stethoscope, ChevronDown, ChevronsRight, ChevronsLeft } from 'lucide-react'
+import { Fence, Loader2, AlertCircle, Stethoscope, ChevronDown, ChevronsRight, ChevronsLeft, Utensils } from 'lucide-react'
 import api, { fetcher } from '../lib/api'
 import { useAuth } from '../contexts/auth-context'
 import { CORRAL_TIPOS, ESTADO_ANIMAL_LABELS, getLoteColor } from '../constantes'
@@ -53,12 +53,17 @@ export function CorralMapa({
   puedeColapsar = false,
   colapsado = false,
   onToggleColapso,
+  puedeAlimentar = false,
+  onAlimentar,
 }: {
   /** Con `escritura:lote`: muestra el toggle para colapsar/expandir el panel. */
   puedeColapsar?: boolean
   /** Panel colapsado a 1 columna (para dar ancho a la tabla de lotes). */
   colapsado?: boolean
   onToggleColapso?: () => void
+  /** Con `escritura:alimento`: muestra el botón "Alimentar" en cada corral. */
+  puedeAlimentar?: boolean
+  onAlimentar?: (corralId: number) => void
 } = {}) {
   const { permisos } = useAuth()
   const { mutate } = useSWRConfig()
@@ -193,39 +198,55 @@ export function CorralMapa({
         }}
         className={`premium-card p-4 space-y-3 transition-all ${dragCls}`}
       >
-        {/* Header colapsable (durante el drag se fuerza expandido para soltar) */}
-        <button
-          type="button"
-          onClick={() => setColapsados((s) => ({ ...s, [c.id]: !s[c.id] }))}
-          disabled={!!drag}
-          aria-expanded={!(!drag && colapsados[c.id])}
-          className="w-full flex items-center justify-between gap-2 text-left cursor-pointer group disabled:cursor-default"
-        >
-          <p className="text-sm font-semibold text-foreground truncate">{c.nombre}</p>
-          <span className="flex items-center gap-1.5 shrink-0">
-            <span
-              className={`text-[10px] font-semibold uppercase tracking-wide rounded-full px-2 py-0.5 ${
-                c.tipo === CORRAL_TIPOS.ENFERMERIA
+        {/* Header: toggle colapsable + botón Alimentar (hermanos, no anidados) */}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setColapsados((s) => ({ ...s, [c.id]: !s[c.id] }))}
+            disabled={!!drag}
+            aria-expanded={!(!drag && colapsados[c.id])}
+            className="flex-1 min-w-0 flex items-center justify-between gap-2 text-left cursor-pointer group disabled:cursor-default"
+          >
+            <p className="text-sm font-semibold text-foreground truncate">{c.nombre}</p>
+            <span className="flex items-center gap-1.5 shrink-0">
+              {puedeAlimentar &&
+                onAlimentar &&
+                c.tipo === CORRAL_TIPOS.COMUN &&
+                c.animales.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation(); // evitar que se expanda el toggle
+                      onAlimentar(c.id);
+                    }}
+                    title="Alimentar este corral"
+                    className="shrink-0 inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium border border-border hover:bg-accent transition-colors cursor-pointer"
+                  >
+                    <Utensils className="size-3.5" strokeWidth={2} /> Alimentar
+                  </button>
+                )}
+              <span
+                className={`text-[10px] font-semibold uppercase tracking-wide rounded-full px-2 py-0.5 ${c.tipo === CORRAL_TIPOS.ENFERMERIA
                   ? 'text-info bg-info-soft'
                   : c.animales.length > 0
                     ? 'text-primary bg-primary-soft'
                     : 'text-muted-foreground bg-muted'
-              }`}
-            >
-              {c.tipo === CORRAL_TIPOS.ENFERMERIA
-                ? 'Enfermería'
-                : c.animales.length > 0
-                  ? 'Ocupado'
-                  : 'Libre'}
+                  }`}
+              >
+                {c.tipo === CORRAL_TIPOS.ENFERMERIA
+                  ? 'Enfermería'
+                  : c.animales.length > 0
+                    ? 'Ocupado'
+                    : 'Libre'}
+              </span>
+              <ChevronDown
+                className={`size-4 text-muted-foreground transition-transform group-hover:text-foreground ${!drag && colapsados[c.id] ? '-rotate-90' : ''
+                  }`}
+                strokeWidth={2}
+              />
             </span>
-            <ChevronDown
-              className={`size-4 text-muted-foreground transition-transform group-hover:text-foreground ${
-                !drag && colapsados[c.id] ? '-rotate-90' : ''
-              }`}
-              strokeWidth={2}
-            />
-          </span>
-        </button>
+          </button>
+        </div>
 
         {!drag && colapsados[c.id] ? null : c.animales.length === 0 ? (
           <p className="text-xs text-muted-foreground italic">
@@ -258,13 +279,11 @@ export function CorralMapa({
                     setMovAnimal(a)
                   }}
                   title={`${a.loteNombre} · Caravana ${a.caravana ?? '—'} · ${ESTADO_ANIMAL_LABELS[a.estado] ?? a.estado} · click: movimientos${draggable ? ' · arrastrable' : ''}`}
-                  className={`h-8 min-w-8 px-1.5 rounded-md text-white text-[11px] font-semibold flex items-center justify-center shadow-sm transition-transform ${
-                    draggable
-                      ? 'cursor-grab active:cursor-grabbing hover:scale-110'
-                      : 'cursor-pointer hover:scale-110'
-                  } ${a.estado === 'enfermo' ? 'ring-2 ring-red-500' : ''} ${
-                    muerto ? 'opacity-40' : ''
-                  } ${arrastrando ? 'opacity-30 scale-95' : ''}`}
+                  className={`h-8 min-w-8 px-1.5 rounded-md text-white text-[11px] font-semibold flex items-center justify-center shadow-sm transition-transform ${draggable
+                    ? 'cursor-grab active:cursor-grabbing hover:scale-110'
+                    : 'cursor-pointer hover:scale-110'
+                    } ${a.estado === 'enfermo' ? 'ring-2 ring-red-500' : ''} ${muerto ? 'opacity-40' : ''
+                    } ${arrastrando ? 'opacity-30 scale-95' : ''}`}
                   style={{ backgroundColor: getLoteColor(a.loteColor) }}
                 >
                   {a.caravana ?? a.nAnimal ?? ''}
@@ -435,11 +454,10 @@ export function CorralMapa({
                       e.preventDefault()
                       handleDrop(c)
                     }}
-                    className={`shrink-0 flex items-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${
-                      esSobre
-                        ? 'border-success bg-success-soft text-success'
-                        : 'border-border bg-background text-foreground'
-                    }`}
+                    className={`shrink-0 flex items-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${esSobre
+                      ? 'border-success bg-success-soft text-success'
+                      : 'border-border bg-background text-foreground'
+                      }`}
                   >
                     {c.tipo === CORRAL_TIPOS.ENFERMERIA ? (
                       <Stethoscope className="size-3.5 text-info shrink-0" strokeWidth={2} />

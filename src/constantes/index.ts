@@ -44,13 +44,14 @@ export const CORRAL_TIPO_LABELS: Record<string, string> = {
   [CORRAL_TIPOS.ENFERMERIA]: 'Enfermería',
 }
 
-/** Estados sanitarios del animal. */
-export const ESTADOS_ANIMAL = ['sano', 'enfermo', 'muerto'] as const
+/** Estados sanitarios del animal. 'salido' = egresó (salida), ya no cuenta. */
+export const ESTADOS_ANIMAL = ['sano', 'enfermo', 'muerto', 'salido'] as const
 
 export const ESTADO_ANIMAL_LABELS: Record<string, string> = {
   sano: 'Sano',
   enfermo: 'Enfermo',
   muerto: 'Muerto',
+  salido: 'Salido',
 }
 
 /** Tipos de movimiento sanitario del animal (historial). */

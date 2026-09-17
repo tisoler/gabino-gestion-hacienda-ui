@@ -18,6 +18,8 @@ import {
   TrendingUp,
   ChevronDown,
   Flag,
+  Utensils,
+  LogOut,
 } from 'lucide-react'
 import api, { fetcher } from '../lib/api'
 import { useAuth } from '../contexts/auth-context'
@@ -36,6 +38,7 @@ import { EditorPesos, type EditorAnimalRow } from '../components/EditorPesos'
 import { GrupoInicial } from '../components/GrupoInicial'
 import { PesajeIntermedioModal } from '../components/PesajeIntermedioModal'
 import { EvolucionPesos } from '../components/EvolucionPesos'
+import { SalidaModal } from '../components/SalidaModal'
 import {
   fechaBase,
   fechasIntermedias,
@@ -149,6 +152,7 @@ const ESTADO_BADGE: Record<string, string> = {
   sano: 'text-success bg-success-soft',
   enfermo: 'text-warning bg-warning-soft',
   muerto: 'text-muted-foreground bg-muted',
+  salido: 'text-primary bg-primary-soft',
 }
 
 export default function LoteDetalle() {
@@ -163,6 +167,9 @@ export default function LoteDetalle() {
   const { permisos } = useAuth()
   // Los clientes ven el lote en modo sólo lectura (sin escritura:lote).
   const puedeEscribir = permisos.includes('escritura:lote')
+  const puedeVerAlimento = permisos.includes('lectura:alimento')
+  const puedeDarSalida = permisos.includes('escritura:salida')
+  const puedeVerSalidas = permisos.includes('lectura:salida')
 
   // El picker de titulares (clientes + anfitrión) requiere lectura:cliente
   // (anfitrión/sys-admin); el operario crea lotes sin dueño.
@@ -200,6 +207,7 @@ export default function LoteDetalle() {
   const [editandoFinal, setEditandoFinal] = useState(false)
   const [finalEditBusy, setFinalEditBusy] = useState(false)
   const [evolucionAbierta, setEvolucionAbierta] = useState(false)
+  const [salidaModal, setSalidaModal] = useState(false)
   const [error, setError] = useState('')
 
   const labelAnimal = (a: Animal) => `Animal ${a.nAnimal ?? a.id}`
@@ -232,21 +240,41 @@ export default function LoteDetalle() {
     return m
   }, [pesajes])
 
+  // Animales VIVOS (sano/enfermo) para los editores de peso: muertos y salidos
+  // no se pesan (los salidos conservan su peso registrado en la salida).
+  const esVivo = (a: Animal) => a.estado === 'sano' || a.estado === 'enfermo'
   const animalesEditor: EditorAnimalRow[] = useMemo(
     () =>
-      (lote?.animales ?? []).map((a) => ({
-        id: a.id,
-        nAnimal: a.nAnimal,
-        caravana: a.caravana,
-        pesoActual: a.pesoInicial,
-      })),
+      (lote?.animales ?? [])
+        .filter(esVivo)
+        .map((a) => ({
+          id: a.id,
+          nAnimal: a.nAnimal,
+          caravana: a.caravana,
+          pesoActual: a.pesoInicial,
+        })),
     [lote],
+  )
+
+  // Animales ya salidos: se listan al final del editor de pesaje FINAL (peso
+  // registrado en la salida, sólo lectura).
+  const salidosEditor: EditorAnimalRow[] = useMemo(
+    () =>
+      (lote?.animales ?? [])
+        .filter((a) => a.estado === 'salido')
+        .map((a) => ({
+          id: a.id,
+          nAnimal: a.nAnimal,
+          caravana: a.caravana,
+          pesoActual: pesajeFinalPorAnimal.get(a.id)?.peso ?? a.pesoFinal ?? null,
+        })),
+    [lote, pesajeFinalPorAnimal],
   )
 
   // Filas del editor para una partida concreta (su peso inicial actual).
   const filasDePartida = (idPartida: number): EditorAnimalRow[] =>
     (lote?.animales ?? [])
-      .filter((a) => a.idPartida === idPartida)
+      .filter((a) => a.idPartida === idPartida && esVivo(a))
       .map((a) => ({
         id: a.id,
         nAnimal: a.nAnimal,
@@ -512,12 +540,22 @@ export default function LoteDetalle() {
 
   return (
     <div className="space-y-6">
-      <button
-        onClick={volver}
-        className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-      >
-        <ArrowLeft className="size-4" strokeWidth={2} /> Volver a lotes
-      </button>
+      <div className="flex items-center justify-between gap-3">
+        <button
+          onClick={volver}
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+        >
+          <ArrowLeft className="size-4" strokeWidth={2} /> Volver a lotes
+        </button>
+        {puedeVerSalidas && lote && (
+          <button
+            onClick={() => navigate(`/salidas?lote=${lote.id}`)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium border border-border hover:bg-accent transition-colors cursor-pointer"
+          >
+            <LogOut className="size-4" strokeWidth={2} /> Salidas del lote
+          </button>
+        )}
+      </div>
 
       {error && (
         <div role="alert" className="p-3 bg-destructive-soft border border-destructive/20 text-destructive text-sm rounded-md flex items-center gap-2.5">
@@ -548,6 +586,16 @@ export default function LoteDetalle() {
             submitLabel="Guardar cambios"
             readOnly={!puedeEscribir}
             onSubmit={handleGuardarLote}
+            headerExtra={
+              puedeVerAlimento ? (
+                <button
+                  onClick={() => navigate(`/alimentacion?lote=${lote.id}`)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium border border-border hover:bg-accent transition-colors cursor-pointer"
+                >
+                  <Utensils className="size-4" strokeWidth={2} /> Alimentación del lote
+                </button>
+              ) : undefined
+            }
           />
 
           {/* Pesajes: peso inicial + intermedios + evolución (misma sección) */}
@@ -582,6 +630,16 @@ export default function LoteDetalle() {
                       className="inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium border border-success/40 text-success hover:bg-success-soft transition-colors disabled:opacity-50 cursor-pointer"
                     >
                       <Flag className="size-4" strokeWidth={2} /> Pesaje final
+                    </button>
+                  )}
+                  {puedeDarSalida && (
+                    <button
+                      onClick={() => setSalidaModal(true)}
+                      disabled={lote.animales.length === 0}
+                      title={lote.animales.length === 0 ? 'Agregá animales primero' : 'Dar salida a animales'}
+                      className="inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium border border-destructive/40 text-destructive hover:bg-destructive-soft transition-colors disabled:opacity-50 cursor-pointer"
+                    >
+                      <LogOut className="size-4" strokeWidth={2} /> Dar salida
                     </button>
                   )}
                 </div>
@@ -733,6 +791,7 @@ export default function LoteDetalle() {
                           ...a,
                           pesoActual: pesajeFinalPorAnimal.get(a.id)?.peso ?? null,
                         }))}
+                        salidos={salidosEditor}
                         fechaInicial={finalFecha}
                         modoDefault="animal"
                         submitLabel="Guardar pesaje final"
@@ -771,7 +830,7 @@ export default function LoteDetalle() {
               {evolucionAbierta && (
                 <div className="px-3 py-3 border-t border-border bg-card">
                   <EvolucionPesos
-                    animales={lote.animales.map((a) => ({ id: a.id, nAnimal: a.nAnimal, caravana: a.caravana, idPartida: a.idPartida }))}
+                    animales={lote.animales.map((a) => ({ id: a.id, nAnimal: a.nAnimal, caravana: a.caravana, idPartida: a.idPartida, estado: a.estado }))}
                     pesajes={pesajes}
                     partidas={partidas}
                   />
@@ -844,9 +903,9 @@ export default function LoteDetalle() {
                   header: 'Estado',
                   accessor: (a) => (
                     <div className="flex items-center gap-1.5">
-                      {puedeEscribir ? (
+                      {puedeEscribir && a.estado !== 'salido' ? (
                         <div className="inline-flex rounded-md border border-border bg-muted/40 p-0.5">
-                          {ESTADOS_ANIMAL.map((e) => (
+                          {ESTADOS_ANIMAL.filter((e) => e !== 'salido').map((e) => (
                             <button
                               key={e}
                               onClick={() => handleEstado(a, e)}
@@ -888,14 +947,16 @@ export default function LoteDetalle() {
                       header: 'Enfermería',
                       accessor: (a: Animal) => {
                         const adentro = a.idCorralEnfermeria != null
-                        const muerto = a.estado === 'muerto'
+                        const inmovil = a.estado === 'muerto' || a.estado === 'salido'
                         return (
                           <button
                             onClick={() => handleEnfermeriaToggle(a)}
-                            disabled={muerto}
+                            disabled={inmovil}
                             title={
-                              muerto
-                                ? 'Un animal muerto no puede moverse'
+                              inmovil
+                                ? a.estado === 'muerto'
+                                  ? 'Un animal muerto no puede moverse'
+                                  : 'Un animal salido ya no está en el corral'
                                 : adentro
                                   ? 'Traer de enfermería'
                                   : 'Enviar a enfermería'
@@ -1015,12 +1076,25 @@ export default function LoteDetalle() {
       {finalModal && lote && (
         <PesajeIntermedioModal
           animales={animalesEditor.map((a) => ({ ...a, pesoActual: null }))}
+          salidos={salidosEditor}
           busy={finalBusy}
           titulo="Agregar pesaje final"
-          descripcion="Peso final del lote (con desbaste opcional para calcular el neto). Es el último pesaje y sólo puede haber uno; después se puede editar."
+          descripcion="Peso final del lote (con desbaste opcional para calcular el neto). Es el último pesaje y sólo puede haber uno; después se puede editar. Los animales ya salidos se listan con su peso registrado en la salida."
           submitLabel="Guardar pesaje final"
           onClose={() => setFinalModal(false)}
           onOk={agregarFinal}
+        />
+      )}
+
+      {salidaModal && lote && (
+        <SalidaModal
+          lote={lote}
+          onClose={() => setSalidaModal(false)}
+          onSaved={async () => {
+            await mutateLote()
+            await mutate('/lotes')
+            await mutate('/corrales/mapa')
+          }}
         />
       )}
     </div>
@@ -1044,10 +1118,12 @@ interface LoteFormProps {
   corrals: CorralOpcion[]
   submitLabel: string
   readOnly?: boolean
-  onSubmit: (vals: LoteFormSubmit) => Promise<void>
+  onSubmit: (data: LoteFormSubmit) => Promise<void> | void
+  /** Contenido extra en el header del formulario (p.ej. botón a la sección). */
+  headerExtra?: React.ReactNode
 }
 
-function LoteForm({ lote, clientes, corrals, submitLabel, readOnly, onSubmit }: LoteFormProps) {
+function LoteForm({ lote, clientes, corrals, submitLabel, readOnly, onSubmit, headerExtra }: LoteFormProps) {
   const [nombre, setNombre] = useState(lote?.nombre ?? '')
   const [fecha, setFecha] = useState(aInputDate(lote?.fecha))
   const [descripcion, setDescripcion] = useState(lote?.descripcion ?? '')
@@ -1153,11 +1229,14 @@ function LoteForm({ lote, clientes, corrals, submitLabel, readOnly, onSubmit }: 
 
   return (
     <form onSubmit={handleSubmit} className="bg-card border border-border rounded-lg p-6 space-y-4">
-      <div>
-        <h1 className="text-2xl font-semibold text-foreground tracking-tight">
-          {lote ? lote.nombre : 'Nuevo lote'}
-        </h1>
-        <p className="text-sm text-muted-foreground mt-0.5">Datos generales de la partida.</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold text-foreground tracking-tight">
+            {lote ? lote.nombre : 'Nuevo lote'}
+          </h1>
+          <p className="text-sm text-muted-foreground mt-0.5">Datos generales de la partida.</p>
+        </div>
+        {headerExtra}
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">

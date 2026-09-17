@@ -33,6 +33,7 @@ const parseNum = (s: string): number | null => {
  */
 export function EditorPesos({
   animales,
+  salidos,
   fechaInicial,
   mostrarFecha = true,
   modoDefault = 'total',
@@ -42,6 +43,8 @@ export function EditorPesos({
   onCancel,
 }: {
   animales: EditorAnimalRow[]
+  /** Animales ya salidos: se listan al final, sólo lectura (peso de la salida). */
+  salidos?: EditorAnimalRow[]
   fechaInicial?: string | null
   mostrarFecha?: boolean
   /** Modo inicial del editor ('animal' al editar un pesaje ya cargado). */
@@ -56,6 +59,10 @@ export function EditorPesos({
     [animales],
   )
   const [modo, setModo] = useState<'total' | 'animal'>(modoDefault)
+  // Con animales ya salidos se fuerza el modo por animal: los salidos se
+  // listan con su peso registrado y no se reparte el total entre ellos.
+  const conSalidos = (salidos?.length ?? 0) > 0
+  const modoEfectivo = conSalidos ? 'animal' : modo
   const [error, setError] = useState('')
   const [fecha, setFecha] = useState(fechaInicial || hoyIso())
   const [pesoTotal, setPesoTotal] = useState(sumaActual ? String(sumaActual) : '')
@@ -87,7 +94,7 @@ export function EditorPesos({
 
   const submit = async () => {
     setError('')
-    if (modo === 'total') {
+    if (modoEfectivo === 'total') {
       if (totalNum == null || totalNum <= 0) return
       const desb = parseNum(desbasteTotal)
       await onSubmit({
@@ -138,23 +145,29 @@ export function EditorPesos({
       )}
 
       {/* Toggle total / por animal */}
-      <div className="inline-flex rounded-md border border-border bg-muted/40 p-0.5">
-        {(['total', 'animal'] as const).map((m) => (
-          <button
-            key={m}
-            type="button"
-            onClick={() => setModo(m)}
-            className={`px-3 py-1.5 rounded text-xs font-medium transition-colors cursor-pointer ${modo === m
-              ? 'bg-primary text-primary-foreground shadow-sm'
-              : 'text-muted-foreground hover:text-foreground'
-              }`}
-          >
-            {m === 'total' ? 'Peso total de lote' : 'Peso por animal'}
-          </button>
-        ))}
-      </div>
+      {conSalidos ? (
+        <p className="text-xs text-muted-foreground">
+          Peso por animal (hay animales ya salidos con su peso registrado).
+        </p>
+      ) : (
+        <div className="inline-flex rounded-md border border-border bg-muted/40 p-0.5">
+          {(['total', 'animal'] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setModo(m)}
+              className={`px-3 py-1.5 rounded text-xs font-medium transition-colors cursor-pointer ${modo === m
+                ? 'bg-primary text-primary-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
+                }`}
+            >
+              {m === 'total' ? 'Peso total de lote' : 'Peso por animal'}
+            </button>
+          ))}
+        </div>
+      )}
 
-      {modo === 'total' ? (
+      {modoEfectivo === 'total' ? (
         <div className="space-y-3">
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1">
@@ -241,6 +254,26 @@ export function EditorPesos({
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {conSalidos && (
+        <div className="border border-primary/30 rounded-md divide-y divide-border">
+          <div className="px-3 py-1.5 bg-primary-soft/40">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Ya salieron ({salidos!.length}) — peso registrado en la salida
+            </p>
+          </div>
+          {salidos!.map((a) => (
+            <div key={a.id} className="flex items-center justify-between px-3 py-2 text-sm opacity-80">
+              <span className="text-foreground truncate">
+                {a.caravana ? `Caravana: ${a.caravana}` : `#${a.nAnimal ?? a.id}`}
+              </span>
+              <span className="text-muted-foreground tabular-nums shrink-0">
+                {fmtPeso(a.pesoActual)} kg
+              </span>
+            </div>
+          ))}
         </div>
       )}
 

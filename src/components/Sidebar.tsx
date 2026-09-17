@@ -8,6 +8,9 @@ import {
   PawPrint,
   Dna,
   Layers,
+  Wheat,
+  Utensils,
+  Truck,
   UserCog,
   LayoutDashboard,
   LogOut,
@@ -62,6 +65,9 @@ const NAV_GROUPS: NavItem[][] = [
   [
     { to: '/lotes', label: 'Lotes', icon: MapPin, permission: 'lectura:lote' },
     { to: '/corrales', label: 'Corrales', icon: Fence, permission: 'lectura:corral', ocultarParaCliente: true },
+    { to: '/dietas', label: 'Dietas', icon: Wheat, permission: 'lectura:dieta' },
+    { to: '/alimentacion', label: 'Alimentación', icon: Utensils, permission: 'lectura:alimento' },
+    { to: '/salidas', label: 'Salidas', icon: Truck, permission: 'lectura:salida' },
     {
       label: 'Animales',
       icon: PawPrint,

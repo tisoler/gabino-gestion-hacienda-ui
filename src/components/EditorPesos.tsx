@@ -37,6 +37,7 @@ export function EditorPesos({
   fechaInicial,
   mostrarFecha = true,
   modoDefault = 'total',
+  modoMixto = false,
   submitLabel,
   busy,
   onSubmit,
@@ -49,6 +50,11 @@ export function EditorPesos({
   mostrarFecha?: boolean
   /** Modo inicial del editor ('animal' al editar un pesaje ya cargado). */
   modoDefault?: 'total' | 'animal'
+  /**
+   * Vista mixta: total (peso + desbaste) y filas por animal a la vez. Cambiar
+   * el total reparte ÷ N; editar un animal recalcula el total.
+   */
+  modoMixto?: boolean
   submitLabel: string
   busy?: boolean
   onSubmit: (p: CargarPesajesPayload) => Promise<void> | void
@@ -92,9 +98,48 @@ export function EditorPesos({
     [animales, filas],
   )
 
+  // --- Vista mixta: sincronización total ↔ individual ---
+  const distribuir = (campo: 'peso' | 'desbaste', total: number) => {
+    if (n === 0) return
+    const per = round2(total / n)
+    setFilas((s) =>
+      Object.fromEntries(
+        animales.map((a) => [
+          a.id,
+          {
+            peso: campo === 'peso' ? String(per) : (s[a.id]?.peso ?? ''),
+            desbaste: campo === 'desbaste' ? String(per) : (s[a.id]?.desbaste ?? ''),
+          },
+        ]),
+      ),
+    )
+  }
+  const onTotalPeso = (v: string) => {
+    setPesoTotal(v)
+    const num = parseNum(v)
+    if (num != null) distribuir('peso', num)
+  }
+  const onTotalDesbaste = (v: string) => {
+    setDesbasteTotal(v)
+    const num = parseNum(v)
+    if (num != null) distribuir('desbaste', num)
+  }
+  const onFilaPeso = (id: number, v: string) => {
+    setFilas((s) => ({ ...s, [id]: { ...(s[id] ?? { desbaste: '' }), peso: v } }))
+    let suma = 0
+    for (const a of animales) suma += parseNum(a.id === id ? v : (filas[a.id]?.peso ?? '')) ?? 0
+    setPesoTotal(round2(suma) ? String(round2(suma)) : '')
+  }
+  const onFilaDesbaste = (id: number, v: string) => {
+    setFilas((s) => ({ ...s, [id]: { ...(s[id] ?? { peso: '' }), desbaste: v } }))
+    let suma = 0
+    for (const a of animales) suma += parseNum(a.id === id ? v : (filas[a.id]?.desbaste ?? '')) ?? 0
+    setDesbasteTotal(round2(suma) ? String(round2(suma)) : '')
+  }
+
   const submit = async () => {
     setError('')
-    if (modoEfectivo === 'total') {
+    if (!modoMixto && modoEfectivo === 'total') {
       if (totalNum == null || totalNum <= 0) return
       const desb = parseNum(desbasteTotal)
       await onSubmit({
@@ -144,30 +189,96 @@ export function EditorPesos({
         </div>
       )}
 
-      {/* Toggle total / por animal */}
-      {conSalidos ? (
-        <p className="text-xs text-muted-foreground">
-          Peso por animal (hay animales ya salidos con su peso registrado).
-        </p>
-      ) : (
-        <div className="inline-flex rounded-md border border-border bg-muted/40 p-0.5">
-          {(['total', 'animal'] as const).map((m) => (
-            <button
-              key={m}
-              type="button"
-              onClick={() => setModo(m)}
-              className={`px-3 py-1.5 rounded text-xs font-medium transition-colors cursor-pointer ${modo === m
-                ? 'bg-primary text-primary-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground'
-                }`}
-            >
-              {m === 'total' ? 'Peso total de lote' : 'Peso por animal'}
-            </button>
-          ))}
-        </div>
-      )}
+      {/* Toggle total / por animal (oculto en la vista mixta) */}
+      {!modoMixto &&
+        (conSalidos ? (
+          <p className="text-xs text-muted-foreground">
+            Peso por animal (hay animales ya salidos con su peso registrado).
+          </p>
+        ) : (
+          <div className="inline-flex rounded-md border border-border bg-muted/40 p-0.5">
+            {(['total', 'animal'] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setModo(m)}
+                className={`px-3 py-1.5 rounded text-xs font-medium transition-colors cursor-pointer ${modo === m
+                  ? 'bg-primary text-primary-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
+                  }`}
+              >
+                {m === 'total' ? 'Peso total de lote' : 'Peso por animal'}
+              </button>
+            ))}
+          </div>
+        ))}
 
-      {modoEfectivo === 'total' ? (
+      {modoMixto ? (
+        <div className="space-y-3">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-foreground">Peso total (kg)</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={pesoTotal}
+                onChange={(e) => onTotalPeso(e.target.value)}
+                className={`${inputCls} w-full`}
+                placeholder="Ej: 12000"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-foreground">
+                Desbaste total <span className="text-muted-foreground">(opcional)</span>
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={desbasteTotal}
+                onChange={(e) => onTotalDesbaste(e.target.value)}
+                className={`${inputCls} w-full`}
+                placeholder="Ej: 200"
+              />
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            El total se reparte ÷ {n} al cambiarlo; si editás un animal, se recalcula el total.
+          </p>
+          <div className="border border-border rounded-md divide-y divide-border max-h-72 overflow-y-auto">
+            {animales.map((a) => (
+              <div key={a.id} className="flex items-center gap-2 px-3 py-2">
+                <span
+                  className="w-35 shrink-0 text-sm text-muted-foreground truncate"
+                  title={a.caravana ? `Caravana ${a.caravana}` : `Animal ${a.nAnimal ?? a.id}`}
+                >
+                  {a.caravana ? `Caravana: ${a.caravana}` : `#${a.nAnimal ?? a.id}`}
+                </span>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={filas[a.id]?.peso ?? ''}
+                  onChange={(e) => onFilaPeso(a.id, e.target.value)}
+                  className={`${inputCls} w-35 shrink-0`}
+                  placeholder="Peso (kg)"
+                />
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={filas[a.id]?.desbaste ?? ''}
+                  onChange={(e) => onFilaDesbaste(a.id, e.target.value)}
+                  className={`${inputCls} w-30 shrink-0`}
+                  placeholder="Desb."
+                  title="Desbaste (opcional)"
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : modoEfectivo === 'total' ? (
         <div className="space-y-3">
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1">

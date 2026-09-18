@@ -51,7 +51,7 @@ export const ESTADO_ANIMAL_LABELS: Record<string, string> = {
   sano: 'Sano',
   enfermo: 'Enfermo',
   muerto: 'Muerto',
-  salido: 'Salido',
+  salido: 'Entregado',
 }
 
 /** Tipos de movimiento sanitario del animal (historial). */

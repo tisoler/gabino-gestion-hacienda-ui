@@ -87,6 +87,13 @@ export const fechaFinal = (pesajes: PesajeDto[]): string | null => {
   return fs.length ? fs.sort()[fs.length - 1] : null
 }
 
+/** Fechas de los pesajes finales (puede haber varios por salidas/cierres). */
+export const fechasFinales = (pesajes: PesajeDto[]): string[] => {
+  const set = new Set<string>()
+  for (const p of pesajes) if (p.tipo === 'final') set.add(p.fecha)
+  return Array.from(set).sort()
+}
+
 /** Suma de peso_inicial de los animales (peso inicial total del lote). */
 export const pesoInicialTotal = (animales: Animal[]): number =>
   animales.reduce((acc, a) => acc + (a.pesoInicial ?? 0), 0)

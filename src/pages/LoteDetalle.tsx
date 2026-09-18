@@ -39,12 +39,13 @@ import { EdicionMasivaModal, type EdicionMasivaValues } from '../components/Edic
 import { EditorPesos, type EditorAnimalRow } from '../components/EditorPesos'
 import { GrupoInicial } from '../components/GrupoInicial'
 import { PesajeIntermedioModal } from '../components/PesajeIntermedioModal'
+import { PesajeFinalModal } from '../components/PesajeFinalModal'
 import { EvolucionPesos } from '../components/EvolucionPesos'
 import { SalidaModal } from '../components/SalidaModal'
 import {
   fechaBase,
   fechasIntermedias,
-  fechaFinal,
+  fechasFinales,
   fmtFechaCorta,
   fmtPeso,
   totalPorFecha,
@@ -206,8 +207,7 @@ export default function LoteDetalle() {
   const [editandoFecha, setEditandoFecha] = useState<string | null>(null)
   const [intermedioEditBusy, setIntermedioEditBusy] = useState(false)
   const [finalModal, setFinalModal] = useState(false)
-  const [finalBusy, setFinalBusy] = useState(false)
-  const [editandoFinal, setEditandoFinal] = useState(false)
+  const [editandoFinalFecha, setEditandoFinalFecha] = useState<string | null>(null)
   const [finalEditBusy, setFinalEditBusy] = useState(false)
   const [evolucionAbierta, setEvolucionAbierta] = useState(false)
   const [salidaModal, setSalidaModal] = useState(false)
@@ -229,7 +229,7 @@ export default function LoteDetalle() {
   const esMulti = partidas.length > 1
   const baseFecha = useMemo(() => fechaBase(pesajes) ?? lote?.fecha ?? null, [pesajes, lote])
   const intermedias = useMemo(() => fechasIntermedias(pesajes), [pesajes])
-  const finalFecha = useMemo(() => fechaFinal(pesajes), [pesajes])
+  const finales = useMemo(() => fechasFinales(pesajes), [pesajes])
   // Mapa (animalId, fecha) → pesaje para las celdas intermedias.
   const pesajePorAnimalFecha = useMemo(() => {
     const m = new Map<string, PesajeDto>()
@@ -242,6 +242,9 @@ export default function LoteDetalle() {
     for (const p of pesajes) if (p.tipo === 'final') m.set(p.animalId, p)
     return m
   }, [pesajes])
+  // Animales pesados en cada fila (intermedio por fecha / final).
+  const nPesadosFecha = (fecha: string) =>
+    pesajes.filter((p) => p.tipo === 'intermedio' && p.fecha === fecha).length
 
   // Animales VIVOS (sano/enfermo) para los editores de peso: muertos y salidos
   // no se pesan (los salidos conservan su peso registrado en la salida).
@@ -259,20 +262,41 @@ export default function LoteDetalle() {
     [lote],
   )
 
-  // Animales ya salidos: se listan al final del editor de pesaje FINAL (peso
-  // registrado en la salida, sólo lectura).
-  const salidosEditor: EditorAnimalRow[] = useMemo(
+  // Animales vivos sin pesaje final (los "restantes" para el botón Pesaje final).
+  const animalesSinFinal = useMemo(
+    () => animalesEditor.filter((a) => !pesajeFinalPorAnimal.has(a.id)),
+    [animalesEditor, pesajeFinalPorAnimal],
+  )
+  // Con idPartida, para el alcance por partida del pesaje final.
+  const animalesSinFinalEditor = useMemo(
     () =>
       (lote?.animales ?? [])
-        .filter((a) => a.estado === 'salido')
+        .filter((a) => esVivo(a) && !pesajeFinalPorAnimal.has(a.id))
         .map((a) => ({
           id: a.id,
           nAnimal: a.nAnimal,
           caravana: a.caravana,
-          pesoActual: pesajeFinalPorAnimal.get(a.id)?.peso ?? a.pesoFinal ?? null,
+          pesoActual: null,
+          idPartida: a.idPartida,
         })),
     [lote, pesajeFinalPorAnimal],
   )
+
+  // Filas del editor del pesaje final de una fecha (incluye salidos: tienen su
+  // final registrado y se pueden corregir).
+  const filasFinalDe = (fecha: string): EditorAnimalRow[] =>
+    (lote?.animales ?? [])
+      .filter((a) => pesajeFinalPorAnimal.get(a.id)?.fecha === fecha)
+      .map((a) => ({
+        id: a.id,
+        nAnimal: a.nAnimal,
+        caravana: a.caravana,
+        pesoActual: pesajeFinalPorAnimal.get(a.id)?.peso ?? null,
+      }))
+  const totalFinalDe = (fecha: string): number =>
+    pesajes
+      .filter((p) => p.tipo === 'final' && p.fecha === fecha)
+      .reduce((acc, p) => acc + Number(p.peso), 0)
 
   // Filas del editor para una partida concreta (su peso inicial actual).
   const filasDePartida = (idPartida: number): EditorAnimalRow[] =>
@@ -338,23 +362,15 @@ export default function LoteDetalle() {
     }
   }
 
-  /** Alta del pesaje final (lote completo). */
+  /** Alta del pesaje final (alcance lote/partida/animales). */
   const agregarFinal = async (payload: CargarPesajesPayload) => {
     if (!lote) return
-    setFinalBusy(true)
-    try {
-      await api.post(`/lotes/${lote.id}/pesajes/final`, payload)
-      await mutateLote()
-      setFinalModal(false)
-    } catch (err) {
-      console.error(err)
-      throw err
-    } finally {
-      setFinalBusy(false)
-    }
+    await api.post(`/lotes/${lote.id}/pesajes/final`, payload)
+    await mutateLote()
+    setFinalModal(false)
   }
 
-  /** Guarda la edición inline del pesaje final (upsert: un único final). */
+  /** Guarda la edición inline de un pesaje final (por fecha). */
   const guardarFinalEdit = async (payload: CargarPesajesPayload) => {
     if (!lote) return
     setFinalEditBusy(true)
@@ -362,7 +378,7 @@ export default function LoteDetalle() {
     try {
       await api.post(`/lotes/${lote.id}/pesajes/final`, payload)
       await mutateLote()
-      setEditandoFinal(false)
+      setEditandoFinalFecha(null)
     } catch (err) {
       console.error(err)
       setError(extractMsg(err, 'No se pudo guardar el pesaje final.'))
@@ -371,11 +387,11 @@ export default function LoteDetalle() {
     }
   }
 
-  const eliminarFinal = async () => {
+  const eliminarFinal = async (fecha: string) => {
     if (!lote) return
-    if (!window.confirm('¿Eliminar el pesaje final de todo el lote?')) return
+    if (!window.confirm(`¿Eliminar el pesaje final del ${fmtFechaCorta(fecha)}?`)) return
     try {
-      await api.delete(`/lotes/${lote.id}/pesajes/final`)
+      await api.delete(`/lotes/${lote.id}/pesajes/final/${fecha}`)
       await mutateLote()
     } catch (err) {
       console.error(err)
@@ -635,11 +651,15 @@ export default function LoteDetalle() {
                   >
                     <Plus className="size-4" strokeWidth={2} /> Pesaje intermedio
                   </button>
-                  {!finalFecha && (
+                  {animalesSinFinal.length > 0 && (
                     <button
                       onClick={() => setFinalModal(true)}
-                      disabled={lote.animales.length === 0}
-                      title={lote.animales.length === 0 ? 'Agregá animales primero' : 'Agregar pesaje final'}
+                      disabled={animalesSinFinal.length === 0}
+                      title={
+                        animalesSinFinal.length === 0
+                          ? 'No hay animales sin pesaje final'
+                          : `Pesaje final de los ${animalesSinFinal.length} animales restantes`
+                      }
                       className="inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium border border-success/40 text-success hover:bg-success-soft transition-colors disabled:opacity-50 cursor-pointer"
                     >
                       <Flag className="size-4" strokeWidth={2} /> Pesaje final
@@ -715,7 +735,8 @@ export default function LoteDetalle() {
                           </span>
                         )}
                         <span className="text-xs text-muted-foreground">
-                          Total {fmtPeso(totalPorFecha(pesajes, fecha))} kg
+                          Total {fmtPeso(totalPorFecha(pesajes, fecha))} kg ·{' '}
+                          {nPesadosFecha(fecha)} de {lote.animales.length} animales
                         </span>
                       </div>
                       {puedeEscribir && (
@@ -758,64 +779,65 @@ export default function LoteDetalle() {
                 )
               })}
 
-              {/* Pesaje final: última fila, destacada, editable, no repetible */}
-              {finalFecha && (
-                <div className="bg-success-soft/40">
-                  <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
-                    <div className="flex items-center gap-2 text-sm">
-                      <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide rounded-full px-2 py-0.5 text-success bg-success-soft">
-                        <Flag className="size-3" strokeWidth={2} /> Final
-                      </span>
-                      <span className="font-medium text-foreground">
-                        Pesaje {fmtFechaCorta(finalFecha)}
-                      </span>
-                      {baseFecha && (
-                        <span className="inline-flex text-[10px] font-semibold uppercase tracking-wide rounded-full px-2 py-0.5 text-info bg-info-soft">
-                          a {diffDias(baseFecha, finalFecha)} días
+              {/* Pesajes finales: una fila por fecha (salidas/cierres parciales) */}
+              {finales.map((fecha) => {
+                const pesando = editandoFinalFecha === fecha
+                const filasFecha = filasFinalDe(fecha)
+                return (
+                  <div key={fecha} className="bg-success-soft/40">
+                    <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
+                      <div className="flex items-center gap-2 text-sm">
+                        <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide rounded-full px-2 py-0.5 text-success bg-success-soft">
+                          <Flag className="size-3" strokeWidth={2} /> Final
                         </span>
+                        <span className="font-medium text-foreground">
+                          Pesaje {fmtFechaCorta(fecha)}
+                        </span>
+                        {baseFecha && (
+                          <span className="inline-flex text-[10px] font-semibold uppercase tracking-wide rounded-full px-2 py-0.5 text-info bg-info-soft">
+                            a {diffDias(baseFecha, fecha)} días
+                          </span>
+                        )}
+                        <span className="text-xs text-muted-foreground">
+                          Total {fmtPeso(totalFinalDe(fecha))} kg · {filasFecha.length} de{' '}
+                          {lote.animales.length} animales
+                        </span>
+                      </div>
+                      {puedeEscribir && (
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => setEditandoFinalFecha(pesando ? null : fecha)}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium border border-border bg-card hover:bg-accent transition-colors cursor-pointer"
+                          >
+                            <Pencil className="size-3.5" strokeWidth={2} />
+                            {pesando ? 'Cancelar' : 'Editar'}
+                          </button>
+                          <button
+                            onClick={() => eliminarFinal(fecha)}
+                            title="Eliminar este pesaje final"
+                            className="p-1.5 rounded-md text-muted-foreground hover:bg-destructive-soft hover:text-destructive transition-colors cursor-pointer"
+                          >
+                            <Trash2 className="size-3.5" strokeWidth={2} />
+                          </button>
+                        </div>
                       )}
-                      <span className="text-xs text-muted-foreground">
-                        Total {fmtPeso(totalPorFecha(pesajes, finalFecha))} kg
-                      </span>
                     </div>
-                    {puedeEscribir && (
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => setEditandoFinal((v) => !v)}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium border border-border bg-card hover:bg-accent transition-colors cursor-pointer"
-                        >
-                          <Pencil className="size-3.5" strokeWidth={2} />
-                          {editandoFinal ? 'Cancelar' : 'Editar'}
-                        </button>
-                        <button
-                          onClick={eliminarFinal}
-                          title="Eliminar el pesaje final"
-                          className="p-1.5 rounded-md text-muted-foreground hover:bg-destructive-soft hover:text-destructive transition-colors cursor-pointer"
-                        >
-                          <Trash2 className="size-3.5" strokeWidth={2} />
-                        </button>
+                    {pesando && puedeEscribir && (
+                      <div className="px-3 pb-3">
+                        <EditorPesos
+                          animales={filasFecha}
+                          fechaInicial={fecha}
+                          modoMixto
+                          submitLabel="Guardar pesaje final"
+                          busy={finalEditBusy}
+                          onSubmit={guardarFinalEdit}
+                          onCancel={() => setEditandoFinalFecha(null)}
+                        />
                       </div>
                     )}
                   </div>
-                  {editandoFinal && puedeEscribir && (
-                    <div className="px-3 pb-3">
-                      <EditorPesos
-                        animales={animalesEditor.map((a) => ({
-                          ...a,
-                          pesoActual: pesajeFinalPorAnimal.get(a.id)?.peso ?? null,
-                        }))}
-                        salidos={salidosEditor}
-                        fechaInicial={finalFecha}
-                        modoDefault="animal"
-                        submitLabel="Guardar pesaje final"
-                        busy={finalEditBusy}
-                        onSubmit={guardarFinalEdit}
-                        onCancel={() => setEditandoFinal(false)}
-                      />
-                    </div>
-                  )}
-                </div>
-              )}
+                )
+              })}
             </div>
 
             {/* Evolución de pesos: accordion colapsable dentro de la misma sección */}
@@ -1106,13 +1128,9 @@ export default function LoteDetalle() {
       )}
 
       {finalModal && lote && (
-        <PesajeIntermedioModal
-          animales={animalesEditor.map((a) => ({ ...a, pesoActual: null }))}
-          salidos={salidosEditor}
-          busy={finalBusy}
-          titulo="Agregar pesaje final"
-          descripcion="Peso final del lote (con desbaste opcional para calcular el neto). Es el último pesaje y sólo puede haber uno; después se puede editar. Los animales ya salidos se listan con su peso registrado en la salida."
-          submitLabel="Guardar pesaje final"
+        <PesajeFinalModal
+          animales={animalesSinFinalEditor}
+          partidas={partidas}
           onClose={() => setFinalModal(false)}
           onOk={agregarFinal}
         />

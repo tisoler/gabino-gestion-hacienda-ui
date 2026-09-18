@@ -76,23 +76,37 @@ El lint del UI usa `eslint.config.js` (sin autofix en el script). No `any` nuevo
     (ya descuenta el sidebar). Las secciones de filtro/alta de las páginas pueden acotarse
     (`max-w-2xl`), pero las tablas ocupan todo el ancho para evitar scroll horizontal.
  10. **Pesajes**: el peso se guarda SIEMPRE por animal (tabla `pesaje`); el total se deriva
-    sumando. `EditorPesos` maneja el toggle total/animal (total = reparte `total÷N` y
-    previsualiza; animal = inputs por fila y total summarizado, **exige todos**) y acepta
-    `salidos` (animales ya egresados listados al final, sólo lectura con su peso registrado;
-    fuerza modo por animal). Los editores usan sólo animales VIVOS (sano/enfermo): muertos y
-    salidos no se pesan. Fecha por defecto = hoy, editable. **INICIAL por partida** (`GrupoInicial`);
-    **INTERMEDIOS del LOTE** (una fila por fecha); **FINAL del lote** con los salidos al final.
-    Las columnas intermedias de la tabla de animales son de **lectura**. `EvolucionPesos`
-    (recharts) es partida-aware y tiene un **toggle "Incluir entregados"** (por defecto excluye
-    salidos; los muertos siempre se excluyen de total/promedio).
+    sumando. `EditorPesos` tiene dos vistas: el toggle total/animal clásico (total = reparte
+    `total÷N` y previsualiza; animal = inputs por fila) y la **vista mixta** (`modoMixto`,
+    usada en salidas y pesaje final): muestra total (peso + desbaste) y filas por animal a la
+    vez, sincronizadas — cambiar el total reparte ÷ N; editar un animal recalcula el total.
+    Los editores usan sólo animales VIVOS (sano/enfermo): muertos y salidos no se pesan.
+    Fecha por defecto = hoy, editable. **INICIAL por partida** (`GrupoInicial`); **INTERMEDIOS
+    del LOTE** (una fila por fecha); **FINALES por fecha** (`PesajeFinalModal`, puede haber
+    varios por salidas/cierres parciales): el botón "Pesaje final" abre el modal con **alcance
+    Lote / Partida / Animales** sobre los animales **restantes sin final**, usando
+    `SeleccionAnimalesPesos` (en 'animales' el total se divide por los seleccionados); cada
+    fecha se edita/borra por separado. Las columnas intermedias de la tabla de animales son de
+    **lectura**. `EvolucionPesos` (recharts) es partida-aware y tiene un **toggle "Incluir
+    entregados"** (por defecto excluye salidos; los muertos siempre se excluyen de total/promedio).
+- **Edición de pesos de grupo** (`components/SeleccionAnimalesPesos.tsx`): entrada de pesos
+  **unificada** para salida y pesaje final, en cualquier alcance (Lote/Partida/Animales).
+  Inputs de **totales** (peso + desbaste) arriba que se reparten ÷ los editables (sin peso
+  final) y una **sola tabla** abajo con altura de fila constante reservada para los inputs.
+  Con `seleccionable` (alcance Animales) hay checkbox por fila y el total se divide por los
+  seleccionados; sin él entran todos. Emite `onDatos({ seleccion, pesos, desbastes })` y los
+  modales arman su payload.
 11. **Salidas** (`pages/Salidas.tsx`, `components/SalidaModal.tsx`, tipos en `lib/salidas.ts`):
-    dar salida a animales vivos por **Lote / Partida / Animales** (checkboxes). Los que no
-    tienen pesaje final lo cargan en el modal (obligatorio); al confirmar se registra la salida
+    dar salida a animales vivos por **Lote / Partida / Animales** usando
+    `SeleccionAnimalesPesos`. Los que no tienen pesaje final lo cargan en el modal
+    (obligatorio); al confirmar se registra la salida
     y el animal pasa a estado 'Salido' (badge en la tabla, sin toggle de estado ni enfermería).
     El botón "Dar salida" está en la sección Pesajes del lote (`escritura:salida`); "Salidas del
     lote" navega a `/salidas?lote=`. La vista lista con **filtros encadenados**
     (cliente/corral/lote/partida + rango de fechas), cards mobile + **tabla** desktop, con peso
-    inicial → final y la **diferencia del grupo** (+ desglose por animal).
+    inicial → final y la **diferencia del grupo** (+ desglose por animal). La **fecha** es
+    editable **inline** en la celda (click → date → Enter/blur, `PATCH /salidas/:id` con
+    `escritura:salida`).
  11. **Partidas**: tanda de ingreso dentro de un lote (`partida` con `fecha`; `animal.id_partida`).
     Nombre "Partida N" derivado. La UI oculta la división si hay una sola. `GET /lotes/:id`
     devuelve `partidas[]` (`id, nombre, fecha, nAnimales, tieneInicial`).

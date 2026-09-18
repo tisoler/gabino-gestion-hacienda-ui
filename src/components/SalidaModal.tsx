@@ -2,16 +2,16 @@ import { useMemo, useState } from 'react'
 import { Loader2, X } from 'lucide-react'
 import api from '../lib/api'
 import SelectAutocomplete from './SelectAutocomplete'
+import {
+  SeleccionAnimalesPesos,
+  type DatosSeleccionPesos,
+  type FilaSeleccionPesos,
+} from './SeleccionAnimalesPesos'
 import type { LoteDetalle, Animal } from '../pages/LoteDetalle'
 import type { PesajeDto } from '../lib/pesos'
 
 const inputCls =
   'px-2.5 py-1.5 bg-background border border-border rounded-md text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-primary transition-colors w-full'
-
-const parseNum = (s: string): number | null => {
-  const n = parseFloat(s.replace(',', '.'))
-  return isNaN(n) ? null : n
-}
 
 const hoyIso = (): string => {
   const d = new Date()
@@ -20,12 +20,16 @@ const hoyIso = (): string => {
   return `${d.getFullYear()}-${m}-${day}`
 }
 
-const labelAnimal = (a: Animal) => (a.caravana ? `Caravana ${a.caravana}` : `Animal ${a.nAnimal ?? a.id}`)
+const inicialDatos = (): DatosSeleccionPesos => ({
+  seleccion: [],
+  pesos: {},
+  desbastes: {},
+})
 
 /**
- * Dar salida a animales NO muertos del lote. Opciones: lote completo, partida
- * completa (si tiene partidas) o selección. El grupo que sale debe tener peso
- * final: si no lo tiene, se pide ingresarlo en el modal.
+ * Dar salida a animales NO muertos del lote. Alcances: Lote / Partida /
+ * Animales, con la misma entrada de pesos unificada (totales + tabla). El
+ * grupo que sale debe tener peso final: si no lo tiene, se pide ingresarlo.
  */
 export function SalidaModal({
   lote,
@@ -52,35 +56,47 @@ export function SalidaModal({
 
   const [tipo, setTipo] = useState<'lote' | 'partida' | 'animales'>('lote')
   const [idPartida, setIdPartida] = useState<string | number>('')
-  const [seleccion, setSeleccion] = useState<Set<number>>(new Set())
   const [fecha, setFecha] = useState(hoyIso())
-  // Peso final por animal (sólo para los que no lo tienen).
-  const [pesos, setPesos] = useState<Record<number, string>>({})
+  const [datos, setDatos] = useState<DatosSeleccionPesos>(inicialDatos)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
-  // Grupo según la opción elegida.
+  // Candidatos por alcance (para Lote/Partida entran todos; Animales elige).
+  const candidatos = useMemo(() => {
+    const aFila = (a: Animal): FilaSeleccionPesos => {
+      const fin = pesajeFinalPorAnimal.get(a.id)
+      return {
+        id: a.id,
+        nAnimal: a.nAnimal,
+        caravana: a.caravana,
+        tieneFinal: !!fin,
+        pesoFinal: fin?.peso ?? null,
+      }
+    }
+    if (tipo === 'lote') return vivos.map(aFila)
+    if (tipo === 'partida') {
+      const id = Number(idPartida)
+      return id ? vivos.filter((a) => a.idPartida === id).map(aFila) : []
+    }
+    return vivos.map(aFila)
+  }, [tipo, idPartida, vivos, pesajeFinalPorAnimal])
+
+  // Grupo que sale: para Animales = los seleccionados.
   const grupo: Animal[] = useMemo(() => {
     if (tipo === 'lote') return vivos
     if (tipo === 'partida') {
       const id = Number(idPartida)
       return id ? vivos.filter((a) => a.idPartida === id) : []
     }
-    return vivos.filter((a) => seleccion.has(a.id))
-  }, [tipo, idPartida, seleccion, vivos])
+    return vivos.filter((a) => datos.seleccion.includes(a.id))
+  }, [tipo, idPartida, datos.seleccion, vivos])
 
-  const toggleAnimal = (id: number) => {
-    setSeleccion((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }
-
-  const faltanPesos = grupo.some(
-    (a) => !pesajeFinalPorAnimal.has(a.id) && (parseNum(pesos[a.id] ?? '') ?? 0) <= 0,
+  const sinFinal = useMemo(
+    () => grupo.filter((a) => !pesajeFinalPorAnimal.has(a.id)),
+    [grupo, pesajeFinalPorAnimal],
   )
+
+  const faltanPesos = sinFinal.some((a) => !(datos.pesos[a.id] > 0))
   const listo =
     grupo.length > 0 && !faltanPesos && (tipo !== 'partida' || idPartida !== '') && !!fecha
 
@@ -91,10 +107,10 @@ export function SalidaModal({
     try {
       const animales = grupo.map((a) => {
         const tieneFinal = pesajeFinalPorAnimal.has(a.id)
-        const item: { animalId: number; pesoFinal?: number } = { animalId: a.id }
+        const item: { animalId: number; pesoFinal?: number; desbaste?: number } = { animalId: a.id }
         if (!tieneFinal) {
-          const p = parseNum(pesos[a.id] ?? '')
-          if (p != null) item.pesoFinal = p
+          if (datos.pesos[a.id] != null) item.pesoFinal = datos.pesos[a.id]
+          if (datos.desbastes[a.id] != null) item.desbaste = datos.desbastes[a.id]
         }
         return item
       })
@@ -174,89 +190,21 @@ export function SalidaModal({
               clearable={false}
             />
           ) : (
-            <div />
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-foreground">Fecha de la salida *</label>
+              <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className={inputCls} />
+            </div>
           )}
         </div>
 
-        <div className="space-y-1.5">
-          <label className="text-xs font-medium text-foreground">Fecha de la salida *</label>
-          <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className={inputCls} />
-        </div>
-
-        {/* Lista: para 'animales' se muestran TODOS los vivos (se eligen con checkbox);
-        para 'lote'/'partida' el grupo completo. */}
-        <div className="space-y-1.5">
-          <label className="text-xs font-medium text-foreground">
-            {tipo === 'animales'
-              ? `Seleccioná los animales (${seleccion.size} de ${vivos.length})`
-              : `Animales que salen (${grupo.length})`}
-          </label>
-          <div className="border border-border rounded-md divide-y divide-border max-h-60 overflow-y-auto">
-            {vivos.length === 0 && (
-              <p className="px-3 py-3 text-xs text-muted-foreground">
-                No hay animales vivos en el lote para dar salida.
-              </p>
-            )}
-            {(tipo === 'animales' ? vivos : grupo).map((a) => {
-              const fin = pesajeFinalPorAnimal.get(a.id)
-              const tiene = !!fin
-              return (
-                <div key={a.id} className="flex items-center justify-between gap-2 px-3 py-2">
-                  <div className="flex items-center gap-2 min-w-0">
-                    {tipo === 'animales' && (
-                      <input
-                        type="checkbox"
-                        checked={seleccion.has(a.id)}
-                        onChange={() => toggleAnimal(a.id)}
-                        className="size-4 accent-primary shrink-0 cursor-pointer"
-                      />
-                    )}
-                    <div className="min-w-0">
-                      <p className="text-sm text-foreground truncate">{labelAnimal(a)}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {a.estado === 'enfermo' ? 'Enfermo · ' : ''}
-                        {tiene ? `Peso final registrado: ${fin!.peso} kg` : 'Sin peso final'}
-                      </p>
-                    </div>
-                  </div>
-                  {tiene ? (
-                    <span className="text-xs text-success shrink-0">Tiene final</span>
-                  ) : (
-                    <div className="w-80 shrink-0">
-                      <input
-                        type="number"
-                        min={0}
-                        step="0.01"
-                        value={pesos[a.id] ?? ''}
-                        onChange={(e) => setPesos((prev) => ({ ...prev, [a.id]: e.target.value }))}
-                        className={inputCls}
-                        placeholder="Peso final (kg)"
-                      />
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        </div>
-
-        {tipo === 'animales' && (
-          <div className="flex items-center gap-2 text-xs">
-            <button
-              onClick={() => setSeleccion(new Set(vivos.map((a) => a.id)))}
-              className="text-primary hover:underline cursor-pointer"
-            >
-              Seleccionar todos
-            </button>
-            <span className="text-muted-foreground">·</span>
-            <button
-              onClick={() => setSeleccion(new Set())}
-              className="text-primary hover:underline cursor-pointer"
-            >
-              Limpiar
-            </button>
-          </div>
-        )}
+        {/* Entrada de pesos unificada (totales + tabla) */}
+        <SeleccionAnimalesPesos
+          key={`${tipo}-${idPartida}`}
+          animales={candidatos}
+          seleccionable={tipo === 'animales'}
+          titulo={tipo === 'animales' ? 'Seleccioná los animales' : 'Animales que salen'}
+          onDatos={setDatos}
+        />
 
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
 

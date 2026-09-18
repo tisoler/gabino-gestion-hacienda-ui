@@ -38,6 +38,7 @@ export function GrupoInicial({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const total = animales.reduce((acc, a) => acc + (a.pesoActual ?? 0), 0)
+  const pesados = animales.filter((a) => a.pesoActual != null).length
 
   const submit = async (payload: CargarPesajesPayload) => {
     setBusy(true)
@@ -70,7 +71,9 @@ export function GrupoInicial({
             Inicial
           </span>
           <span className="font-medium text-foreground">{titulo}</span>
-          <span className="text-xs text-muted-foreground">Total {fmtPeso(total)} kg</span>
+          <span className="text-xs text-muted-foreground">
+            Total {fmtPeso(total)} kg · {pesados} de {animales.length} animales
+          </span>
         </div>
         {puedeEscribir && (
           <button

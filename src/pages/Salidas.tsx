@@ -1,12 +1,13 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useSearchParams } from 'react-router-dom'
 import useSWR from 'swr'
-import { AlertCircle, Loader2, LogOut, Pencil } from 'lucide-react'
+import { AlertCircle, ChevronDown, Loader2, LogOut, Pencil } from 'lucide-react'
 import api, { fetcher } from '../lib/api'
 import { useAuth } from '../contexts/auth-context'
 import SelectAutocomplete from '../components/SelectAutocomplete'
 import { Table } from '../components/Table'
-import { SALIDA_TIPO_LABELS, type SalidaView } from '../lib/salidas'
+import { SALIDA_TIPO_LABELS, type SalidaItemView, type SalidaView } from '../lib/salidas'
 
 const fmtFecha = (f: string): string => {
   if (!f) return '—'
@@ -102,6 +103,83 @@ function CeldaFecha({
   )
 }
 
+/**
+ * Celda "Animales que salieron": muestra un resumen y, al hacer click, despliega
+ * un popover (portal, fijo) anclado a la celda que se superpone a las filas
+ * siguientes sin agrandar la fila. Cierra al click afuera o al scrollear.
+ */
+function CeldaAnimales({ animales }: { animales: SalidaItemView[] }) {
+  const [open, setOpen] = useState(false)
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
+  const ref = useRef<HTMLButtonElement>(null)
+
+  const toggle = () => {
+    if (!open && ref.current) {
+      const r = ref.current.getBoundingClientRect()
+      const ancho = 320
+      const left = Math.max(12, Math.min(r.left, window.innerWidth - ancho - 12))
+      setPos({ top: r.bottom + 4, left })
+    }
+    setOpen((v) => !v)
+  }
+
+  useEffect(() => {
+    if (!open) return
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current?.contains(e.target as Node)) return
+      setOpen(false)
+    }
+    const cerrar = () => setOpen(false)
+    document.addEventListener('mousedown', onDoc)
+    window.addEventListener('scroll', cerrar, true)
+    window.addEventListener('resize', cerrar)
+    return () => {
+      document.removeEventListener('mousedown', onDoc)
+      window.removeEventListener('scroll', cerrar, true)
+      window.removeEventListener('resize', cerrar)
+    }
+  }, [open])
+
+  return (
+    <>
+      <button
+        ref={ref}
+        type="button"
+        onClick={toggle}
+        className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline cursor-pointer"
+      >
+        {animales.length} animales
+        <ChevronDown className={`size-3.5 transition-transform ${open ? 'rotate-180' : ''}`} strokeWidth={2} />
+      </button>
+      {open &&
+        pos &&
+        createPortal(
+          <div
+            style={{ position: 'fixed', top: pos.top, left: pos.left, width: 320, zIndex: 9999 }}
+            className="bg-card border border-border rounded-md shadow-lg max-h-72 overflow-y-auto p-1.5"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <div className="divide-y divide-border">
+              {animales.map((a) => (
+                <div key={a.animalId} className="flex items-center justify-between gap-2 px-2 py-1.5 text-xs">
+                  <span className="text-foreground truncate">{etiquetaAnimal(a)}</span>
+                  <span className="text-muted-foreground tabular-nums shrink-0">
+                    {fmtKg(a.pesoInicial ?? 0)} → {fmtKg(a.pesoFinal)} kg{' '}
+                    <span className={a.diferenciaKg >= 0 ? 'text-success' : 'text-destructive'}>
+                      ({a.diferenciaKg >= 0 ? '+' : ''}
+                      {fmtKg(a.diferenciaKg)})
+                    </span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>,
+          document.body,
+        )}
+    </>
+  )
+}
+
 interface Filtros {
   cliente: string
   corral: string
@@ -110,7 +188,6 @@ interface Filtros {
   desde: string
   hasta: string
 }
-
 export default function Salidas() {
   const { permisos, isSysAdmin } = useAuth()
   const puedeVer = permisos.includes('lectura:salida')
@@ -432,24 +509,7 @@ export default function Salidas() {
                 },
                 {
                   header: 'Animales que salieron',
-                  accessor: (s) => (
-                    <div className="space-y-0.5">
-                      {s.animales.map((a) => (
-                        <div key={a.animalId} className="text-xs">
-                          <span className="text-foreground">{etiquetaAnimal(a)}</span>
-                          <span className="text-muted-foreground tabular-nums">
-                            {' '}
-                            — {fmtKg(a.pesoInicial ?? 0)} → {fmtKg(a.pesoFinal)} kg
-                            <span className={a.diferenciaKg >= 0 ? 'text-success' : 'text-destructive'}>
-                              {' '}
-                              ({a.diferenciaKg >= 0 ? '+' : ''}
-                              {fmtKg(a.diferenciaKg)})
-                            </span>
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  ),
+                  accessor: (s) => <CeldaAnimales animales={s.animales} />,
                 },
                 ...(isSysAdmin
                   ? [

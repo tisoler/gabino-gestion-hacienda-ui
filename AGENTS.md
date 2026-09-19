@@ -63,9 +63,10 @@ El lint del UI usa `eslint.config.js` (sin autofix en el script). No `any` nuevo
     (`POST /lotes/:id/animales/masiva`). **Sólo la cantidad es requerida**; raza, categoría y
     pelaje son opcionales (se editan después por animal o en masa). Las **caravanas se
     precargan** como `{loteId}-{i}` (1,2,3… n) y son editables (override por animal). No carga
-    peso: los pesajes van en la sección de pesajes. Si el lote ya tiene animales con pesaje
-    inicial, pide elegir partida (nueva / existente) y, al unir a una partida pesada, exige el
-    peso de los animales nuevos.
+    peso: los pesajes van en la sección de pesajes. **Partida**: la decide el **server**
+    (el FE no manda elección, sólo muestra el resultado): si hay una partida **abierta** (sin
+    pesaje inicial) los nuevos se suman a ella; si no (todas pesadas o ninguna), crea una
+    **nueva partida**.
 - **Edición en masa** (`components/EdicionMasivaModal.tsx`): raza/categoría/pelaje para los
   animales del **lote** o de una **partida** (`POST /lotes/:id/animales/edicion-masiva`). Arriba
   el alcance + los campos "aplicar a todos" (setean el valor en todos los del alcance); abajo el
@@ -76,19 +77,21 @@ El lint del UI usa `eslint.config.js` (sin autofix en el script). No `any` nuevo
     (ya descuenta el sidebar). Las secciones de filtro/alta de las páginas pueden acotarse
     (`max-w-2xl`), pero las tablas ocupan todo el ancho para evitar scroll horizontal.
  10. **Pesajes**: el peso se guarda SIEMPRE por animal (tabla `pesaje`); el total se deriva
-    sumando. `EditorPesos` tiene dos vistas: el toggle total/animal clásico (total = reparte
-    `total÷N` y previsualiza; animal = inputs por fila) y la **vista mixta** (`modoMixto`,
-    usada en salidas y pesaje final): muestra total (peso + desbaste) y filas por animal a la
-    vez, sincronizadas — cambiar el total reparte ÷ N; editar un animal recalcula el total.
-    Los editores usan sólo animales VIVOS (sano/enfermo): muertos y salidos no se pesan.
-    Fecha por defecto = hoy, editable. **INICIAL por partida** (`GrupoInicial`); **INTERMEDIOS
-    del LOTE** (una fila por fecha); **FINALES por fecha** (`PesajeFinalModal`, puede haber
-    varios por salidas/cierres parciales): el botón "Pesaje final" abre el modal con **alcance
-    Lote / Partida / Animales** sobre los animales **restantes sin final**, usando
-    `SeleccionAnimalesPesos` (en 'animales' el total se divide por los seleccionados); cada
-    fecha se edita/borra por separado. Las columnas intermedias de la tabla de animales son de
-    **lectura**. `EvolucionPesos` (recharts) es partida-aware y tiene un **toggle "Incluir
-    entregados"** (por defecto excluye salidos; los muertos siempre se excluyen de total/promedio).
+    sumando. Fecha por defecto = hoy, editable. **INICIAL**: las filas se agrupan **por FECHA
+    de pesaje** (una fila por cada fecha distinta de pesajes `inicial`; el badge muestra la
+    partida si todos sus animales son de una, o "Lote"). Cargar un inicial de animales que
+    faltan con la **misma fecha** los agrega a esa fila; con **fecha distinta** crea una fila
+    nueva (el modal de "+ Pesaje inicial" parte de la última fecha de inicial). `GrupoInicial`
+    es display-only (total + "N de M" + Editar que abre el modal). **INTERMEDIO** y **INICIAL**
+    comparten el modal `PesajeLotePartidaModal` (alcance Lote/Partida, totales peso+desbaste ÷N
+    y tabla por animal prefilled y editable; sin "Animales"). Intermedio nuevo = todos los vivos
+    del alcance; editar una fecha incluye los **salidos** pesados en esa fecha (corregir
+    peso/fecha) y permite agregar los que entraron después. **FINALES por fecha**
+    (`PesajeFinalModal`, varios por salidas/cierres): alcance **Lote/Partida/Animales** con
+    `SeleccionAnimalesPesos`; cada fecha se edita/borra por separado. Las columnas intermedias de
+    la tabla de animales son de **lectura**. `EvolucionPesos` (recharts) es partida-aware y tiene
+    un **toggle "Incluir entregados"** (por defecto excluye salidos; los muertos siempre se
+    excluyen de total/promedio).
 - **Edición de pesos de grupo** (`components/SeleccionAnimalesPesos.tsx`): entrada de pesos
   **unificada** para salida y pesaje final, en cualquier alcance (Lote/Partida/Animales).
   Inputs de **totales** (peso + desbaste) arriba que se reparten ÷ los editables (sin peso
@@ -104,7 +107,9 @@ El lint del UI usa `eslint.config.js` (sin autofix en el script). No `any` nuevo
     El botón "Dar salida" está en la sección Pesajes del lote (`escritura:salida`); "Salidas del
     lote" navega a `/salidas?lote=`. La vista lista con **filtros encadenados**
     (cliente/corral/lote/partida + rango de fechas), cards mobile + **tabla** desktop, con peso
-    inicial → final y la **diferencia del grupo** (+ desglose por animal). La **fecha** es
+    inicial → final y la **diferencia del grupo**. En la tabla desktop, la celda
+    "Animales que salieron" es un resumen con **popover** (`CeldaAnimales`, portal fijo anclado
+    a la celda) que se superpone a las filas siguientes sin agrandarlas. La **fecha** es
     editable **inline** en la celda (click → date → Enter/blur, `PATCH /salidas/:id` con
     `escritura:salida`).
  11. **Partidas**: tanda de ingreso dentro de un lote (`partida` con `fecha`; `animal.id_partida`).

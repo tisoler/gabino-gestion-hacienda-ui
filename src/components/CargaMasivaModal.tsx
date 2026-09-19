@@ -10,8 +10,6 @@ const inputCls =
 interface PreviewRow {
   nAnimal: number
   caravana: string
-  peso?: number
-  desbaste?: number
 }
 
 export interface CargaMasivaValues {
@@ -25,15 +23,12 @@ export interface CargaMasivaValues {
   animales: PreviewRow[]
 }
 
-const parseNum = (s: string): number | undefined => {
-  const v = parseFloat(s.replace(',', '.'))
-  return isNaN(v) ? undefined : v
-}
-
 /**
- * Carga masiva de animales (una tanda = una partida). Los pesajes se cargan
- * aparte; sólo se piden pesos aquí si se une la tanda a una partida que ya
- * tiene pesaje inicial (para no distorsionar la gráfica).
+ * Carga masiva de animales (una tanda). La partida se decide automáticamente:
+ *  - si hay una partida ABIERTA (sin pesaje inicial) → se suman a ella;
+ *  - si todas las partidas ya tienen peso inicial (o no hay partidas) → se crea
+ *    una NUEVA partida.
+ * El peso inicial se carga aparte, en la sección de pesajes.
  */
 export function CargaMasivaModal({
   loteNombre,
@@ -45,7 +40,7 @@ export function CargaMasivaModal({
   /** Nombre de lote: se usa para precargar las caravanas `{lote}-{i}`. */
   loteNombre: string
   siguienteN: number
-  /** Partidas existentes del lote (para decidir nueva vs unir). */
+  /** Partidas existentes del lote (para decidir unirse a la abierta o crear nueva). */
   partidas: PartidaDto[]
   onClose: () => void
   onOk: (vals: CargaMasivaValues) => Promise<void>
@@ -56,23 +51,18 @@ export function CargaMasivaModal({
   const [cantidad, setCantidad] = useState('')
   const [observaciones, setObservaciones] = useState('')
   const [caravanas, setCaravanas] = useState<Record<number, string>>({})
-  const [pesos, setPesos] = useState<Record<number, string>>({})
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
-  // ¿El lote ya tiene animales con pesaje inicial? → hay que decidir partida.
-  const hayPesadas = partidas.some((p) => p.tieneInicial)
-  const [destino, setDestino] = useState<'nueva' | 'existente'>('nueva')
-  const [idPartida, setIdPartida] = useState<string | number>('')
-  const partidaElegida = partidas.find((p) => p.id === Number(idPartida))
-  // Al unir a una partida ya pesada, hay que dar el peso de cada animal nuevo.
-  const requierePesos = hayPesadas && destino === 'existente' && !!partidaElegida?.tieneInicial
+  // Partida abierta = la más reciente sin pesaje inicial (a ella se suman).
+  const partidaAbierta = [...partidas].reverse().find((p) => !p.tieneInicial) ?? null
+  const nuevaPartida = !partidaAbierta
 
   const n = parseInt(cantidad, 10)
   const cantidadOk = !isNaN(n) && n > 0 && n <= 500
   // Sólo la cantidad es requerida; raza/categoría/pelaje son opcionales y se
   // pueden completar/editar después (por animal o en masa por partida/lote).
-  const requeridosOk = cantidadOk && (!hayPesadas || (destino === 'nueva' || !!idPartida))
+  const requeridosOk = cantidadOk
 
   const preview = useMemo<{ nAnimal: number }[]>(() => {
     if (!cantidadOk) return []
@@ -101,9 +91,6 @@ export function CargaMasivaModal({
       if (seen.has(k)) return setError(`Caravana duplicada: "${r.caravana}".`)
       seen.add(k)
     }
-    if (requierePesos && rows.some((r) => parseNum(pesos[r.nAnimal] ?? '') == null)) {
-      return setError('La partida elegida ya está pesada: ingresá el peso de cada animal nuevo.')
-    }
     setBusy(true)
     try {
       await onOk({
@@ -111,16 +98,9 @@ export function CargaMasivaModal({
         ...(idPelaje ? { idPelaje: Number(idPelaje) } : {}),
         ...(idCategoria ? { idCategoria: Number(idCategoria) } : {}),
         cantidad: n,
-        ...(hayPesadas && destino === 'nueva' ? { nuevaPartida: true } : {}),
-        ...(destino === 'existente' && idPartida ? { idPartida: Number(idPartida) } : {}),
+        // La partida la decide el server (partida abierta → unirse; si no → nueva).
         observaciones: observaciones.trim() || undefined,
-        animales: rows.map((r) => ({
-          nAnimal: r.nAnimal,
-          caravana: r.caravana,
-          ...(requierePesos
-            ? { peso: parseNum(pesos[r.nAnimal] ?? '') }
-            : {}),
-        })),
+        animales: rows.map((r) => ({ nAnimal: r.nAnimal, caravana: r.caravana })),
       })
     } catch (err) {
       console.error(err)
@@ -182,49 +162,21 @@ export function CargaMasivaModal({
           </div>
         </div>
 
-        {/* Partida: sólo si el lote ya tiene animales con pesaje inicial */}
-        {hayPesadas && (
-          <div className="space-y-3 border border-border rounded-md p-4">
-            <div className="text-sm font-medium text-foreground">Partida</div>
-            <div className="inline-flex rounded-md border border-border bg-muted/40 p-0.5">
-              {(['nueva', 'existente'] as const).map((d) => (
-                <button
-                  key={d}
-                  type="button"
-                  onClick={() => setDestino(d)}
-                  className={`px-3 py-1.5 rounded text-xs font-medium transition-colors cursor-pointer ${destino === d
-                    ? 'bg-primary text-primary-foreground shadow-sm'
-                    : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                >
-                  {d === 'nueva' ? 'Nueva partida' : 'Partida existente'}
-                </button>
-              ))}
-            </div>
-            {destino === 'existente' && (
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-foreground">Partida *</label>
-                <select
-                  value={idPartida}
-                  onChange={(e) => setIdPartida(e.target.value ? Number(e.target.value) : '')}
-                  className={`${inputCls} w-full cursor-pointer`}
-                >
-                  <option value="">Elegir partida...</option>
-                  {partidas.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.nombre} · {p.fecha} · {p.nAnimales} animales{p.tieneInicial ? ' · pesada' : ''}
-                    </option>
-                  ))}
-                </select>
-                {requierePesos && (
-                  <p className="text-xs text-muted-foreground">
-                    Esta partida ya tiene pesaje inicial: ingresá el peso de cada
-                    animal nuevo (a la fecha de la partida).
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
+        {/* Partida: decisión automática, sólo informativa */}
+        {partidas.length === 0 ? (
+          <p className="text-xs text-muted-foreground">
+            Se creará la <strong>primera partida</strong> del lote.
+          </p>
+        ) : partidaAbierta ? (
+          <p className="text-xs text-muted-foreground">
+            Se agregarán a la <strong>partida abierta</strong> ({partidaAbierta.nombre}), que aún
+            no tiene pesaje inicial.
+          </p>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            Todas las partidas ya tienen peso inicial: se creará una <strong>nueva
+            partida</strong>.
+          </p>
         )}
 
         <div className="space-y-1.5">
@@ -236,6 +188,7 @@ export function CargaMasivaModal({
           <div className="border border-border rounded-lg overflow-hidden">
             <div className="flex items-center gap-2 px-3 py-2 bg-muted/60 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               <Users className="size-3.5" strokeWidth={2} /> Preview · {n} animales
+              {nuevaPartida && partidas.length > 0 && ' · nueva partida'}
             </div>
             <div className="divide-y divide-border max-h-64 overflow-y-auto">
               {preview.map((p, i) => (
@@ -248,28 +201,13 @@ export function CargaMasivaModal({
                     placeholder="Caravana *"
                     className={`${inputCls} flex-1 min-w-0`}
                   />
-                  {requierePesos && (
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={pesos[p.nAnimal] ?? ''}
-                      onChange={(e) => setPesos((s) => ({ ...s, [p.nAnimal]: e.target.value }))}
-                      placeholder="Peso kg *"
-                      className={`${inputCls} w-28 shrink-0`}
-                    />
-                  )}
                 </div>
               ))}
             </div>
           </div>
         )}
         {!requeridosOk && (
-          <p className="text-xs text-muted-foreground">
-            {hayPesadas && destino === 'existente' && !idPartida
-              ? 'Elegí la partida existente.'
-              : 'Ingresá la cantidad para ver el preview.'}
-          </p>
+          <p className="text-xs text-muted-foreground">Ingresá la cantidad para ver el preview.</p>
         )}
 
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}

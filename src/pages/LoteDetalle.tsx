@@ -38,7 +38,7 @@ import { CargaMasivaModal, type CargaMasivaValues } from '../components/CargaMas
 import { EdicionMasivaModal, type EdicionMasivaValues } from '../components/EdicionMasivaModal'
 import { EditorPesos, type EditorAnimalRow } from '../components/EditorPesos'
 import { GrupoInicial } from '../components/GrupoInicial'
-import { PesajeIntermedioModal } from '../components/PesajeIntermedioModal'
+import { PesajeLotePartidaModal, type FilaLotePartida } from '../components/PesajeLotePartidaModal'
 import { PesajeFinalModal } from '../components/PesajeFinalModal'
 import { EvolucionPesos } from '../components/EvolucionPesos'
 import { SalidaModal } from '../components/SalidaModal'
@@ -202,10 +202,9 @@ export default function LoteDetalle() {
   const [traerModal, setTraerModal] = useState<Animal | null>(null)
   const [estadoModal, setEstadoModal] = useState<{ animal: Animal; estado: string } | null>(null)
   const [movModal, setMovModal] = useState<Animal | null>(null)
-  const [intermedioModal, setIntermedioModal] = useState(false)
-  const [intermedioBusy, setIntermedioBusy] = useState(false)
-  const [editandoFecha, setEditandoFecha] = useState<string | null>(null)
-  const [intermedioEditBusy, setIntermedioEditBusy] = useState(false)
+  const [inicialModal, setInicialModal] = useState<{ editar: boolean; fecha: string | null } | null>(null)
+  const [intermedioModal, setIntermedioModal] = useState<{ fecha: string | null } | null>(null)
+  const [pesajeBusy, setPesajeBusy] = useState(false)
   const [finalModal, setFinalModal] = useState(false)
   const [editandoFinalFecha, setEditandoFinalFecha] = useState<string | null>(null)
   const [finalEditBusy, setFinalEditBusy] = useState(false)
@@ -226,7 +225,6 @@ export default function LoteDetalle() {
   // --- Pesajes ---
   const pesajes = useMemo(() => lote?.pesajes ?? [], [lote])
   const partidas = useMemo(() => lote?.partidas ?? [], [lote])
-  const esMulti = partidas.length > 1
   const baseFecha = useMemo(() => fechaBase(pesajes) ?? lote?.fecha ?? null, [pesajes, lote])
   const intermedias = useMemo(() => fechasIntermedias(pesajes), [pesajes])
   const finales = useMemo(() => fechasFinales(pesajes), [pesajes])
@@ -240,6 +238,12 @@ export default function LoteDetalle() {
   const pesajeFinalPorAnimal = useMemo(() => {
     const m = new Map<number, PesajeDto>()
     for (const p of pesajes) if (p.tipo === 'final') m.set(p.animalId, p)
+    return m
+  }, [pesajes])
+  // Pesaje 'inicial' por animal.
+  const pesajeInicialPorAnimal = useMemo(() => {
+    const m = new Map<number, PesajeDto>()
+    for (const p of pesajes) if (p.tipo === 'inicial') m.set(p.animalId, p)
     return m
   }, [pesajes])
   // Animales pesados en cada fila (intermedio por fecha / final).
@@ -298,55 +302,112 @@ export default function LoteDetalle() {
       .filter((p) => p.tipo === 'final' && p.fecha === fecha)
       .reduce((acc, p) => acc + Number(p.peso), 0)
 
-  // Filas del editor para una partida concreta (su peso inicial actual).
-  const filasDePartida = (idPartida: number): EditorAnimalRow[] =>
-    (lote?.animales ?? [])
-      .filter((a) => a.idPartida === idPartida && esVivo(a))
-      .map((a) => ({
-        id: a.id,
-        nAnimal: a.nAnimal,
-        caravana: a.caravana,
-        pesoActual: a.pesoInicial,
-      }))
+  // Animales vivos SIN pesaje inicial (para el botón "+ Pesaje inicial").
+  const animalesSinInicial = useMemo(
+    () => (lote?.animales ?? []).filter((a) => esVivo(a) && !pesajeInicialPorAnimal.has(a.id)),
+    [lote, pesajeInicialPorAnimal],
+  )
 
-  const agregarIntermedio = async (payload: CargarPesajesPayload) => {
-    if (!lote) return
-    setIntermedioBusy(true)
-    try {
-      await api.post(`/lotes/${lote.id}/pesajes/intermedios`, payload)
-      await mutateLote()
-      setIntermedioModal(false)
-    } catch (err) {
-      console.error(err)
-      throw err
-    } finally {
-      setIntermedioBusy(false)
-    }
+  const aFilaLP = (
+    a: Animal,
+    pesoActual: number | null,
+    desbasteActual: number | null,
+  ): FilaLotePartida => ({
+    id: a.id,
+    nAnimal: a.nAnimal,
+    caravana: a.caravana,
+    idPartida: a.idPartida,
+    pesoActual,
+    desbasteActual,
+  })
+
+  // Nuevo intermedio: todos los vivos del alcance (pesoActual null).
+  const filasVivosFila = (): FilaLotePartida[] =>
+    (lote?.animales ?? []).filter(esVivo).map((a) => aFilaLP(a, null, null))
+
+  // Editar intermedio de una fecha: vivos + los que tienen pesaje en esa fecha
+  // (incluidos salidos), prefilled.
+  const filasIntermedioFecha = (fecha: string): FilaLotePartida[] => {
+    const conPesaje = new Set(
+      pesajes.filter((p) => p.tipo === 'intermedio' && p.fecha === fecha).map((p) => p.animalId),
+    )
+    return (lote?.animales ?? [])
+      .filter((a) => esVivo(a) || conPesaje.has(a.id))
+      .map((a) => {
+        const p = pesajePorAnimalFecha.get(`${a.id}|${fecha}`)
+        return aFilaLP(a, p?.peso ?? null, p?.desbaste ?? null)
+      })
   }
 
-  /**
-   * Guarda la edición inline de un pesaje intermedio. Si cambió la fecha, se
-   * borra la columna anterior y se crea la nueva (misma dinámica que el alta).
-   */
-  const guardarIntermedioEdit = async (
-    fechaOriginal: string,
-    payload: CargarPesajesPayload,
-  ) => {
+  // Nuevo inicial: sólo los que faltan (vivos sin inicial).
+  const filasInicialFaltantesFila = (): FilaLotePartida[] =>
+    animalesSinInicial.map((a) => aFilaLP(a, null, null))
+
+  // Mapa animalId → fecha de su pesaje 'inicial'.
+  const inicialFechaPorAnimal = useMemo(() => {
+    const m = new Map<number, string>()
+    for (const p of pesajes) if (p.tipo === 'inicial') m.set(p.animalId, p.fecha)
+    return m
+  }, [pesajes])
+  // Fechas distintas de pesajes 'inicial' (asc): una fila por fecha.
+  const fechasIniciales = useMemo(() => {
+    const set = new Set<string>()
+    for (const p of pesajes) if (p.tipo === 'inicial') set.add(p.fecha)
+    return Array.from(set).sort()
+  }, [pesajes])
+
+  // Filas del editor del pesaje inicial de una FECHA (prefilled).
+  const filasInicialFecha = (fecha: string): FilaLotePartida[] =>
+    (lote?.animales ?? [])
+      .filter((a) => inicialFechaPorAnimal.get(a.id) === fecha)
+      .map((a) => {
+        const p = pesajeInicialPorAnimal.get(a.id)
+        return aFilaLP(a, p?.peso ?? null, p?.desbaste ?? null)
+      })
+  // Badge (partida) de una fila de inicial: la partida común de sus animales.
+  const badgeFechaInicial = (fecha: string): string => {
+    const partidasIds = new Set(filasInicialFecha(fecha).map((f) => f.idPartida ?? null))
+    if (partidasIds.size === 1) {
+      const pid = [...partidasIds][0]
+      const pt = partidas.find((p) => p.id === pid)
+      if (pt) return pt.nombre
+    }
+    return 'Lote'
+  }
+  // Última fecha de pesaje inicial del lote (para precargar un inicial nuevo).
+  const ultimaFechaInicial = useMemo(() => {
+    const fs = pesajes.filter((p) => p.tipo === 'inicial').map((p) => p.fecha).sort()
+    return fs.length ? fs[fs.length - 1] : null
+  }, [pesajes])
+
+  /** Nuevo o edición de un pesaje intermedio (fecha null = nuevo). */
+  const onIntermedioOk = async (fechaOriginal: string | null, payload: CargarPesajesPayload) => {
     if (!lote) return
-    setIntermedioEditBusy(true)
-    setError('')
+    setPesajeBusy(true)
     try {
-      if (payload.fecha !== fechaOriginal) {
+      if (fechaOriginal && payload.fecha !== fechaOriginal) {
         await api.delete(`/lotes/${lote.id}/pesajes/intermedios/${fechaOriginal}`)
       }
       await api.post(`/lotes/${lote.id}/pesajes/intermedios`, payload)
       await mutateLote()
-      setEditandoFecha(null)
-    } catch (err) {
-      console.error(err)
-      setError(extractMsg(err, 'No se pudo guardar el pesaje.'))
+      await mutate('/lotes')
+      setIntermedioModal(null)
     } finally {
-      setIntermedioEditBusy(false)
+      setPesajeBusy(false)
+    }
+  }
+
+  /** Nuevo (faltantes) o edición de un pesaje inicial. */
+  const onInicialOk = async (payload: CargarPesajesPayload) => {
+    if (!lote) return
+    setPesajeBusy(true)
+    try {
+      await api.post(`/lotes/${lote.id}/pesajes/inicial`, payload)
+      await mutateLote()
+      await mutate('/lotes')
+      setInicialModal(null)
+    } finally {
+      setPesajeBusy(false)
     }
   }
 
@@ -642,9 +703,18 @@ export default function LoteDetalle() {
                 </div>
               </div>
               {puedeEscribir && (
-                <div className="flex items-center gap-2">
+                <div className="grid grid-cols-2 gap-2 [&>button]:justify-center sm:flex sm:flex-wrap sm:items-center sm:justify-end">
+                  {animalesSinInicial.length > 0 && (
+                    <button
+                      onClick={() => setInicialModal({ editar: false, fecha: null })}
+                      title={`Cargar el peso inicial de los ${animalesSinInicial.length} animales que faltan`}
+                      className="inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium border border-info/40 text-white bg-info hover:opacity-90 transition-opacity cursor-pointer"
+                    >
+                      <Plus className="size-4" strokeWidth={2} /> Pesaje inicial
+                    </button>
+                  )}
                   <button
-                    onClick={() => setIntermedioModal(true)}
+                    onClick={() => setIntermedioModal({ fecha: null })}
                     disabled={lote.animales.length === 0}
                     title={lote.animales.length === 0 ? 'Agregá animales primero' : 'Agregar pesaje intermedio'}
                     className="inline-flex items-center gap-2 px-3 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium shadow-sm hover:opacity-90 transition-opacity disabled:opacity-50 cursor-pointer"
@@ -660,7 +730,7 @@ export default function LoteDetalle() {
                           ? 'No hay animales sin pesaje final'
                           : `Pesaje final de los ${animalesSinFinal.length} animales restantes`
                       }
-                      className="inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium border border-success/40 text-success hover:bg-success-soft transition-colors disabled:opacity-50 cursor-pointer"
+                      className="inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium border border-success/40 text-white bg-success hover:opacity-90 transition-opacity disabled:opacity-50 cursor-pointer"
                     >
                       <Flag className="size-4" strokeWidth={2} /> Pesaje final
                     </button>
@@ -670,7 +740,7 @@ export default function LoteDetalle() {
                       onClick={() => setSalidaModal(true)}
                       disabled={lote.animales.length === 0}
                       title={lote.animales.length === 0 ? 'Agregá animales primero' : 'Dar salida a animales'}
-                      className="inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium border border-destructive/40 text-destructive hover:bg-destructive-soft transition-colors disabled:opacity-50 cursor-pointer"
+                      className="inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium border border-destructive/40 text-white bg-destructive hover:opacity-90 transition-opacity disabled:opacity-50 cursor-pointer"
                     >
                       <LogOut className="size-4" strokeWidth={2} /> Dar salida
                     </button>
@@ -681,47 +751,28 @@ export default function LoteDetalle() {
 
             {/* Pesajes: peso inicial (por partida si hay varias) + intermedios (lote) */}
             <div className="border border-border rounded-md divide-y divide-border">
-              {esMulti ? (
-                <>
-                  <div className="px-3 py-2 bg-primary-soft/40">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Peso inicial por partida
-                    </p>
-                  </div>
-                  {partidas.map((p) => (
-                    <GrupoInicial
-                      key={p.id}
-                      loteId={lote.id}
-                      titulo={p.fecha ? `Pesaje ${fmtFechaCorta(p.fecha)}` : p.nombre}
-                      badge={p.nombre}
-                      animales={filasDePartida(p.id)}
-                      idPartida={p.id}
-                      fechaInicial={p.fecha}
-                      puedeEscribir={puedeEscribir}
-                      onMutate={async () => {
-                        await mutateLote()
-                        await mutate('/lotes')
-                      }}
-                    />
-                  ))}
-                </>
-              ) : (
+              {fechasIniciales.length === 0 ? (
                 <GrupoInicial
-                  loteId={lote.id}
-                  titulo={baseFecha ? `Pesaje ${fmtFechaCorta(baseFecha)}` : 'Peso inicial'}
+                  titulo="Peso inicial"
                   badge="Lote"
                   animales={animalesEditor}
-                  fechaInicial={baseFecha}
                   puedeEscribir={puedeEscribir}
-                  onMutate={async () => {
-                    await mutateLote()
-                    await mutate('/lotes')
-                  }}
+                  onEditar={() => setInicialModal({ editar: false, fecha: null })}
                 />
+              ) : (
+                fechasIniciales.map((fecha) => (
+                  <GrupoInicial
+                    key={fecha}
+                    titulo={`Pesaje ${fmtFechaCorta(fecha)}`}
+                    badge={badgeFechaInicial(fecha)}
+                    animales={filasInicialFecha(fecha)}
+                    puedeEscribir={puedeEscribir}
+                    onEditar={() => setInicialModal({ editar: true, fecha })}
+                  />
+                ))
               )}
 
               {intermedias.map((fecha) => {
-                const pesando = editandoFecha === fecha
                 return (
                   <div key={fecha}>
                     <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
@@ -742,11 +793,11 @@ export default function LoteDetalle() {
                       {puedeEscribir && (
                         <div className="flex items-center gap-1">
                           <button
-                            onClick={() => setEditandoFecha(pesando ? null : fecha)}
+                            onClick={() => setIntermedioModal({ fecha })}
                             className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium border border-border hover:bg-accent transition-colors cursor-pointer"
                           >
                             <Pencil className="size-3.5" strokeWidth={2} />
-                            {pesando ? 'Cancelar' : 'Editar'}
+                            Editar
                           </button>
                           <button
                             onClick={() => eliminarIntermedio(fecha)}
@@ -758,23 +809,6 @@ export default function LoteDetalle() {
                         </div>
                       )}
                     </div>
-                    {pesando && puedeEscribir && (
-                      <div className="px-3 pb-3">
-                        <EditorPesos
-                          animales={animalesEditor.map((a) => ({
-                            ...a,
-                            pesoActual:
-                              pesajePorAnimalFecha.get(`${a.id}|${fecha}`)?.peso ?? null,
-                          }))}
-                          fechaInicial={fecha}
-                          modoDefault="animal"
-                          submitLabel="Guardar pesaje"
-                          busy={intermedioEditBusy}
-                          onSubmit={(payload) => guardarIntermedioEdit(fecha, payload)}
-                          onCancel={() => setEditandoFecha(null)}
-                        />
-                      </div>
-                    )}
                   </div>
                 )
               })}
@@ -1118,14 +1152,66 @@ export default function LoteDetalle() {
         />
       )}
 
-      {intermedioModal && lote && (
-        <PesajeIntermedioModal
-          animales={animalesEditor.map((a) => ({ ...a, pesoActual: null }))}
-          busy={intermedioBusy}
-          onClose={() => setIntermedioModal(false)}
-          onOk={agregarIntermedio}
-        />
-      )}
+      {inicialModal &&
+        lote &&
+        (() => {
+          const esNuevo = !inicialModal.editar
+          const filas = esNuevo ? filasInicialFaltantesFila() : filasInicialFecha(inicialModal.fecha!)
+          const fIni = esNuevo ? ultimaFechaInicial : inicialModal.fecha
+          const totalVivos = (lote.animales ?? []).filter(esVivo).length
+          return (
+            <PesajeLotePartidaModal
+              animales={filas}
+              partidas={partidas}
+              titulo={esNuevo ? 'Agregar pesaje inicial' : 'Editar pesaje inicial'}
+              descripcion={
+                esNuevo
+                  ? 'Cargá el peso inicial de los animales que aún no lo tienen. La fecha parte de la del último pesaje inicial; si elegís otra, se crea el inicial con esa fecha.'
+                  : 'Corregí peso, desbaste o fecha. Se incluyen los animales salidos que ya tienen inicial.'
+              }
+              mostrarAlcance={esNuevo}
+              fechaInicial={fIni}
+              submitLabel="Guardar peso inicial"
+              busy={pesajeBusy}
+              notaParcial={
+                esNuevo && animalesSinInicial.length < totalVivos
+                  ? 'Carga parcial: sólo se muestran los animales que aún no tienen peso inicial.'
+                  : undefined
+              }
+              onClose={() => setInicialModal(null)}
+              onOk={onInicialOk}
+            />
+          )
+        })()}
+
+      {intermedioModal &&
+        lote &&
+        (() => {
+          const esEdicion = intermedioModal.fecha != null
+          const filas = esEdicion ? filasIntermedioFecha(intermedioModal.fecha!) : filasVivosFila()
+          return (
+            <PesajeLotePartidaModal
+              animales={filas}
+              partidas={partidas}
+              titulo={
+                esEdicion
+                  ? `Editar pesaje ${fmtFechaCorta(intermedioModal.fecha!)}`
+                  : 'Agregar pesaje intermedio'
+              }
+              descripcion={
+                esEdicion
+                  ? 'Corregí peso, desbaste o fecha. Se incluyen los animales salidos pesados en esta fecha; agregá los que entraron después.'
+                  : 'Registra un peso para una fecha nueva, para todo el lote o una partida.'
+              }
+              mostrarAlcance
+              fechaInicial={intermedioModal.fecha}
+              submitLabel="Guardar pesaje"
+              busy={pesajeBusy}
+              onClose={() => setIntermedioModal(null)}
+              onOk={(p) => onIntermedioOk(intermedioModal.fecha, p)}
+            />
+          )
+        })()}
 
       {finalModal && lote && (
         <PesajeFinalModal

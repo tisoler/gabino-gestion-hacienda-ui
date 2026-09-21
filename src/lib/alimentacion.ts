@@ -14,6 +14,8 @@ export interface RepartoLote {
 export interface AlimentacionView {
   id: number
   fecha: string
+  /** Hora 'HH:MM:SS' (default 12:00). Junto a fecha forma el instante T. */
+  hora: string
   /** Total (corral + enfermería). */
   cantidadKg: number
   /** Lo ingresado para el corral. */
@@ -44,4 +46,13 @@ export interface DietaOpcion {
   nombre: string
   version: number
   global: boolean
+}
+
+/** Lote con sus animales reconstruidos en un instante (para el override). */
+export interface EstadoCorralLote {
+  loteId: number
+  loteNombre: string
+  idCliente: string | null
+  nAnimales: number
+  nAnimalesEnfermeria: number
 }

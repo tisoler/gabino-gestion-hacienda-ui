@@ -2,106 +2,18 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useSearchParams } from 'react-router-dom'
 import useSWR from 'swr'
-import { AlertCircle, ChevronDown, Loader2, LogOut, Pencil } from 'lucide-react'
+import { AlertCircle, ChevronDown, Loader2, LogOut } from 'lucide-react'
 import api, { fetcher } from '../lib/api'
 import { useAuth } from '../contexts/auth-context'
 import SelectAutocomplete from '../components/SelectAutocomplete'
 import { Table } from '../components/Table'
+import { CeldaFechaHora } from '../components/CeldaFechaHora'
 import { SALIDA_TIPO_LABELS, type SalidaItemView, type SalidaView } from '../lib/salidas'
 
-const fmtFecha = (f: string): string => {
-  if (!f) return '—'
-  const d = new Date(f.length === 10 ? f + 'T00:00:00' : f)
-  return isNaN(d.getTime()) ? '—' : d.toLocaleDateString('es-AR')
-}
 const fmtKg = (n: number): string => (n == null ? '—' : n.toLocaleString('es-AR', { maximumFractionDigits: 2 }))
 
 const etiquetaAnimal = (a: { nAnimal: number | null; caravana: string | null }): string =>
   a.caravana ? `Car. ${a.caravana}` : `Animal ${a.nAnimal ?? ''}`
-
-/** Celda de fecha editable in situ (click → input date → Enter/blur guarda). */
-function CeldaFecha({
-  fecha,
-  puedeEscribir,
-  onGuardar,
-}: {
-  fecha: string
-  puedeEscribir: boolean
-  onGuardar: (nueva: string) => Promise<void>
-}) {
-  const [editando, setEditando] = useState(false)
-  const [valor, setValor] = useState(fecha)
-  const [busy, setBusy] = useState(false)
-  const guardandoRef = useRef(false)
-
-  if (!puedeEscribir) return <span className="text-muted-foreground">{fmtFecha(fecha)}</span>
-
-  const guardarCon = async (nueva: string) => {
-    if (guardandoRef.current) return
-    if (!nueva || nueva === fecha) {
-      setEditando(false)
-      return
-    }
-    guardandoRef.current = true
-    setBusy(true)
-    try {
-      await onGuardar(nueva)
-      setEditando(false)
-    } catch {
-      /* el padre ya mostró el error; se queda editando */
-    } finally {
-      guardandoRef.current = false
-      setBusy(false)
-    }
-  }
-
-  // Mientras guarda, se colapsa y muestra el spinner donde iría el lápiz.
-  if (editando && !busy) {
-    return (
-      <input
-        type="date"
-        autoFocus
-        value={valor}
-        onClick={(e) => e.stopPropagation()}
-        onChange={(e) => {
-          const v = e.target.value
-          setValor(v)
-          // Fecha completa → guarda de una y sale del editor.
-          if (/^\d{4}-\d{2}-\d{2}$/.test(v)) void guardarCon(v)
-        }}
-        onBlur={() => void guardarCon(valor)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') void guardarCon(valor)
-          if (e.key === 'Escape') {
-            setValor(fecha)
-            setEditando(false)
-          }
-        }}
-        className="px-2 py-1 bg-background border border-border rounded-md text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-      />
-    )
-  }
-
-  return (
-    <button
-      type="button"
-      disabled={busy}
-      onClick={() => {
-        setValor(fecha)
-        setEditando(true)
-      }}
-      title="Editar fecha"
-      className="inline-flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors cursor-pointer group disabled:cursor-default"
-    >
-      {fmtFecha(fecha)}
-      {busy ? (
-        <Loader2 className="size-3.5 animate-spin text-primary" strokeWidth={2} />
-      ) : (
-        <Pencil className="size-3 opacity-60 group-hover:opacity-100 transition-opacity" strokeWidth={2} />
-      )}
-    </button>
-  )
-}
 
 /**
  * Celda "Animales que salieron": muestra un resumen y, al hacer click, despliega
@@ -212,9 +124,9 @@ export default function Salidas() {
 
   const set = (patch: Partial<Filtros>) => setFiltros((f) => ({ ...f, ...patch }))
 
-  const guardarFecha = async (s: SalidaView, nueva: string) => {
+  const guardarFechaHora = async (s: SalidaView, nuevaFecha: string, nuevaHora: string) => {
     try {
-      await api.patch(`/salidas/${s.id}`, { fecha: nueva })
+      await api.patch(`/salidas/${s.id}`, { fecha: nuevaFecha, hora: nuevaHora })
       await mutateSalidas()
     } catch (err) {
       console.error(err)
@@ -396,10 +308,11 @@ export default function Salidas() {
                         {s.lote.nombre} · Corral: {s.corral?.nombre ?? '—'} · {SALIDA_TIPO_LABELS[s.tipo] ?? s.tipo}
                       </p>
                       <p className="text-xs text-muted-foreground flex flex-wrap items-center gap-x-1">
-                        <CeldaFecha
+                        <CeldaFechaHora
                           fecha={s.fecha}
+                          hora={s.hora}
                           puedeEscribir={puedeEditar}
-                          onGuardar={(n) => guardarFecha(s, n)}
+                          onGuardar={(f, h) => guardarFechaHora(s, f, h)}
                         />
                         <span>· {s.nAnimales} animales ·</span>
                         {s.partida && <span>{s.partida.nombre} ·</span>}
@@ -452,12 +365,13 @@ export default function Salidas() {
               data={filtradas}
               columns={[
                 {
-                  header: 'Fecha',
+                  header: 'Fecha / Hora',
                   accessor: (s) => (
-                    <CeldaFecha
+                    <CeldaFechaHora
                       fecha={s.fecha}
+                      hora={s.hora}
                       puedeEscribir={puedeEditar}
-                      onGuardar={(n) => guardarFecha(s, n)}
+                      onGuardar={(f, h) => guardarFechaHora(s, f, h)}
                     />
                   ),
                 },

@@ -1,9 +1,9 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import useSWR from 'swr'
-import { Loader2, Plus, X } from 'lucide-react'
+import { Loader2, Plus, RefreshCw, X } from 'lucide-react'
 import api, { fetcher } from '../lib/api'
 import SelectAutocomplete from './SelectAutocomplete'
-import type { CorralOpcion, DietaOpcion } from '../lib/alimentacion'
+import type { CorralOpcion, DietaOpcion, EstadoCorralLote } from '../lib/alimentacion'
 
 const inputCls =
   'px-3 py-2 bg-background border border-border rounded-md text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-primary transition-colors'
@@ -19,7 +19,12 @@ interface Fila {
   key: number
   idDieta: string | number
   fecha: string
+  hora: string
   cantidad: string
+  /** Conteos reconstruidos (o ajustados) por lote, para enviar como override. */
+  ajuste: EstadoCorralLote[] | null
+  ajusteCargando: boolean
+  ajusteEditado: boolean
 }
 
 let proxKey = 1
@@ -27,13 +32,17 @@ const nuevaFila = (prev?: Fila): Fila => ({
   key: proxKey++,
   idDieta: prev?.idDieta ?? '',
   fecha: prev?.fecha ?? hoyIso(),
+  hora: prev?.hora ?? '12:00',
   cantidad: '',
+  ajuste: null,
+  ajusteCargando: false,
+  ajusteEditado: false,
 })
 
 /**
- * Alimentar corral: el corral es fijo arriba y se cargan UNA O MÁS filas
- * (dieta + fecha + cantidad). Cada fila es una alimentación para ese día.
- * La fila nueva hereda la fecha y la dieta de la anterior.
+ * Alimentar corral: corral fijo arriba + UNA O MÁS filas (dieta + fecha + hora
+ * + cantidad). Cada fila muestra los animales del corral RECONSTRUIDOS a ese
+ * instante (por lote: común y enfermería), editables como override del cálculo.
  */
 export function AlimentarModal({
   initialCorralId,
@@ -52,16 +61,10 @@ export function AlimentarModal({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
-  // Sólo corrales COMUNES con animales vivos: la enfermería se alimenta a
-  // través del corral de su lote.
   const corralesActivos = useMemo(
-    () =>
-      (corrales ?? []).filter(
-        (c) => c.activo && c.tipo === 'comun' && c.tieneVivos,
-      ),
+    () => (corrales ?? []).filter((c) => c.activo && c.tipo === 'comun' && c.tieneVivos),
     [corrales],
   )
-  // /dietas (sin `estado`) ya devuelve sólo las activas (globales + de la empresa).
   const dietasOpciones = useMemo(() => dietas ?? [], [dietas])
 
   const setFila = (key: number, patch: Partial<Fila>) =>
@@ -71,14 +74,65 @@ export function AlimentarModal({
 
   const agregarFila = () => {
     const ultima = filas[filas.length - 1]
-    setFilas((fs) => [...fs, nuevaFila(ultima)])
+    const nueva = nuevaFila(ultima)
+    setFilas((fs) => [...fs, nueva])
+    if (idCorral !== '') void recalc(nueva.key, Number(idCorral), nueva.fecha, nueva.hora)
+  }
+
+  /** Fetch de la reconstrucción para una fila (precarga los conteos editables). */
+  const recalc = async (key: number, corralId: number, fecha: string, hora: string) => {
+    if (!corralId || !fecha) return
+    setFilas((fs) => fs.map((f) => (f.key === key ? { ...f, ajusteCargando: true } : f)))
+    try {
+      const { data } = await api.get<EstadoCorralLote[]>('/alimentaciones/estado-corral', {
+        params: { idCorral: corralId, fecha, hora },
+      })
+      setFilas((fs) =>
+        fs.map((f) =>
+          f.key === key
+            ? { ...f, ajuste: data ?? [], ajusteCargando: false, ajusteEditado: false }
+            : f,
+        ),
+      )
+    } catch {
+      setFilas((fs) => fs.map((f) => (f.key === key ? { ...f, ajusteCargando: false } : f)))
+    }
+  }
+
+  // Al abrir (con corral preseleccionado), precargar los conteos de cada fila.
+  useEffect(() => {
+    if (idCorral === '') return
+    filas.forEach((f) => void recalc(f.key, Number(idCorral), f.fecha, f.hora))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const cambiarCorral = (v: string | number) => {
+    setIdCorral(v)
+    if (v === '') return
+    filas.forEach((f) => void recalc(f.key, Number(v), f.fecha, f.hora))
+  }
+
+  const setAjuste = (key: number, loteId: number, campo: 'nAnimales' | 'nAnimalesEnfermeria', v: string) => {
+    const n = parseInt(v, 10)
+    setFilas((fs) =>
+      fs.map((f) => {
+        if (f.key !== key || !f.ajuste) return f
+        return {
+          ...f,
+          ajusteEditado: true,
+          ajuste: f.ajuste.map((a) =>
+            a.loteId === loteId ? { ...a, [campo]: isNaN(n) || n < 0 ? 0 : n } : a,
+          ),
+        }
+      }),
+    )
   }
 
   const filasValidas = filas.every((f) => {
     const n = parseFloat(f.cantidad.replace(',', '.'))
     return f.idDieta !== '' && !!f.fecha && !isNaN(n) && n > 0
   })
-  const listo = idCorral !== '' && filas.length > 0 && filasValidas
+  const listo = idCorral !== '' && filas.length > 0 && filasValidas && !filas.some((f) => f.ajusteCargando)
 
   const submit = async () => {
     setError('')
@@ -91,6 +145,17 @@ export function AlimentarModal({
           idDieta: Number(f.idDieta),
           cantidadKg: parseFloat(f.cantidad.replace(',', '.')),
           fecha: f.fecha,
+          hora: f.hora,
+          // Sólo si el usuario ajustó los conteos se manda el override.
+          ...(f.ajusteEditado && f.ajuste
+            ? {
+                ajuste: f.ajuste.map((a) => ({
+                  loteId: a.loteId,
+                  nAnimales: a.nAnimales,
+                  nAnimalesEnfermeria: a.nAnimalesEnfermeria,
+                })),
+              }
+            : {}),
         })),
       })
       await onSaved()
@@ -112,7 +177,7 @@ export function AlimentarModal({
         if (e.target === e.currentTarget) onClose()
       }}
     >
-      <div className="w-full max-w-2xl bg-card border border-border rounded-lg shadow-xl p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+      <div className="w-full max-w-3xl bg-card border border-border rounded-lg shadow-xl p-6 space-y-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between">
           <h2 className="text-base font-semibold text-foreground">Alimentar corral</h2>
           <button
@@ -124,8 +189,8 @@ export function AlimentarModal({
           </button>
         </div>
         <p className="text-xs text-muted-foreground">
-          La cantidad de cada fila se reparte entre los lotes del corral según sus animales
-          vivos (los de enfermería cuentan; los muertos no).
+          La cantidad de cada fila se reparte entre los lotes del corral según sus animales vivos
+          en ese instante (fecha + hora). Podés ajustar los conteos reconstruidos.
         </p>
 
         {/* Corral: único, siempre arriba */}
@@ -133,11 +198,8 @@ export function AlimentarModal({
           label="Corral *"
           placeholder="Elegir corral..."
           value={idCorral}
-          onChange={setIdCorral}
-          options={corralesActivos.map((c) => ({
-            value: c.id,
-            label: c.nombre,
-          }))}
+          onChange={cambiarCorral}
+          options={corralesActivos.map((c) => ({ value: c.id, label: c.nombre }))}
           clearable={false}
         />
 
@@ -154,8 +216,8 @@ export function AlimentarModal({
           </div>
 
           {filas.map((f, i) => (
-            <div key={f.key} className="border border-border rounded-md p-3">
-              <div className="flex items-center justify-between gap-2 mb-2">
+            <div key={f.key} className="border border-border rounded-md p-3 space-y-3">
+              <div className="flex items-center justify-between gap-2">
                 <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   Fila {i + 1}
                 </span>
@@ -175,10 +237,7 @@ export function AlimentarModal({
                   placeholder="Elegir dieta..."
                   value={f.idDieta}
                   onChange={(v) => setFila(f.key, { idDieta: v })}
-                  options={dietasOpciones.map((d) => ({
-                    value: d.id,
-                    label: `${d.nombre} (v${d.version})`,
-                  }))}
+                  options={dietasOpciones.map((d) => ({ value: d.id, label: `${d.nombre} (v${d.version})` }))}
                   clearable={false}
                 />
                 <div className="space-y-1.5">
@@ -186,7 +245,22 @@ export function AlimentarModal({
                   <input
                     type="date"
                     value={f.fecha}
-                    onChange={(e) => setFila(f.key, { fecha: e.target.value })}
+                    onChange={(e) => {
+                      setFila(f.key, { fecha: e.target.value })
+                      if (idCorral !== '') void recalc(f.key, Number(idCorral), e.target.value, f.hora)
+                    }}
+                    className={`${inputCls} w-full`}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-foreground">Hora *</label>
+                  <input
+                    type="time"
+                    value={f.hora}
+                    onChange={(e) => {
+                      setFila(f.key, { hora: e.target.value })
+                      if (idCorral !== '') void recalc(f.key, Number(idCorral), f.fecha, e.target.value)
+                    }}
                     className={`${inputCls} w-full`}
                   />
                 </div>
@@ -202,8 +276,66 @@ export function AlimentarModal({
                     placeholder="Ej: 2500"
                   />
                 </div>
-                <div className="hidden sm:block" aria-hidden />
               </div>
+
+              {/* Conteos reconstruidos (editables) */}
+              {idCorral !== '' && (
+                <div className="border border-border rounded-md">
+                  <div className="flex items-center justify-between gap-2 px-3 py-1.5 bg-muted/40">
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      Animales en el momento (ajustables)
+                    </span>
+                    <button
+                      onClick={() => recalc(f.key, Number(idCorral), f.fecha, f.hora)}
+                      title="Recalcular desde el histórico"
+                      className="inline-flex items-center gap-1 text-[11px] text-primary hover:underline cursor-pointer"
+                    >
+                      {f.ajusteCargando ? (
+                        <Loader2 className="size-3 animate-spin" strokeWidth={2} />
+                      ) : (
+                        <RefreshCw className="size-3" strokeWidth={2} />
+                      )}
+                      Recalcular
+                    </button>
+                  </div>
+                  {f.ajusteCargando ? (
+                    <p className="px-3 py-2 text-xs text-muted-foreground">Calculando…</p>
+                  ) : !f.ajuste || f.ajuste.length === 0 ? (
+                    <p className="px-3 py-2 text-xs text-muted-foreground">
+                      No se reconstruyeron animales en el corral para esa fecha/hora.
+                    </p>
+                  ) : (
+                    <div className="divide-y divide-border">
+                      <div className="hidden sm:grid grid-cols-[1fr_auto_auto] gap-3 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        <span>Lote</span>
+                        <span className="w-24 text-right">En corral</span>
+                        <span className="w-24 text-right">Enfermería</span>
+                      </div>
+                      {f.ajuste.map((a) => (
+                        <div key={a.loteId} className="grid grid-cols-[1fr_auto_auto] items-center gap-3 px-3 py-1.5">
+                          <span className="text-sm text-foreground truncate" title={a.loteNombre}>
+                            {a.loteNombre}
+                          </span>
+                          <input
+                            type="number"
+                            min={0}
+                            value={a.nAnimales}
+                            onChange={(e) => setAjuste(f.key, a.loteId, 'nAnimales', e.target.value)}
+                            className={`${inputCls} w-24 text-right`}
+                          />
+                          <input
+                            type="number"
+                            min={0}
+                            value={a.nAnimalesEnfermeria}
+                            onChange={(e) => setAjuste(f.key, a.loteId, 'nAnimalesEnfermeria', e.target.value)}
+                            className={`${inputCls} w-24 text-right`}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           ))}
         </div>

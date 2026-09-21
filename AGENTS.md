@@ -44,8 +44,10 @@ El lint del UI usa `eslint.config.js` (sin autofix en el script). No `any` nuevo
    `EnviarEnfermeriaModal` → razón/enfermedad obligatoria (catálogo `motivo`) y picker si hay
    varias enfermerías; traer abre `TraerEnfermeriaModal` → estado 'sano'|'muerto' (+ causa si
    es muerto). Pasar estado a enfermo/muerto desde la grilla abre `CambioEstadoModal`
-   (`AnimalModals.tsx`). El server registra todo en `animal_movimiento`; el historial se ve
-   en `MovimientosModal` (click en la ficha del mapa o botón de reloj junto al estado).
+   (`AnimalModals.tsx`). Cada modal de movimiento pide **fecha + hora** (default ahora,
+   editables → permiten registrar en el pasado). El server registra todo en `animal_movimiento`
+   (con `fecha`+`hora` de negocio); el historial se ve en `MovimientosModal` (click en la ficha
+   del mapa o botón de reloj junto al estado).
 7. **Catálogos** (`CatalogoSelect.tsx`): raza/categoria/pelaje/proveedor/lugar_origen/motivo
    como autocomplete con alta inline (`/catalogos/:tipo` lee globales+empresa; POST asocia a la
    empresa con `escritura:lote`). `SelectAutocomplete` soporta `allowCreate` + `onCreate`
@@ -101,17 +103,16 @@ El lint del UI usa `eslint.config.js` (sin autofix en el script). No `any` nuevo
   modales arman su payload.
 11. **Salidas** (`pages/Salidas.tsx`, `components/SalidaModal.tsx`, tipos en `lib/salidas.ts`):
     dar salida a animales vivos por **Lote / Partida / Animales** usando
-    `SeleccionAnimalesPesos`. Los que no tienen pesaje final lo cargan en el modal
-    (obligatorio); al confirmar se registra la salida
+    `SeleccionAnimalesPesos`, con **fecha + hora** (def 12:00). Los que no tienen pesaje final
+    lo cargan en el modal (obligatorio); al confirmar se registra la salida
     y el animal pasa a estado 'Salido' (badge en la tabla, sin toggle de estado ni enfermería).
     El botón "Dar salida" está en la sección Pesajes del lote (`escritura:salida`); "Salidas del
     lote" navega a `/salidas?lote=`. La vista lista con **filtros encadenados**
     (cliente/corral/lote/partida + rango de fechas), cards mobile + **tabla** desktop, con peso
     inicial → final y la **diferencia del grupo**. En la tabla desktop, la celda
     "Animales que salieron" es un resumen con **popover** (`CeldaAnimales`, portal fijo anclado
-    a la celda) que se superpone a las filas siguientes sin agrandarlas. La **fecha** es
-    editable **inline** en la celda (click → date → Enter/blur, `PATCH /salidas/:id` con
-    `escritura:salida`).
+    a la celda) que se superpone a las filas siguientes sin agrandarlas. La **fecha + hora** es
+    editable **inline** con `CeldaFechaHora` (`PATCH /salidas/:id` con `escritura:salida`).
  11. **Partidas**: tanda de ingreso dentro de un lote (`partida` con `fecha`; `animal.id_partida`).
     Nombre "Partida N" derivado. La UI oculta la división si hay una sola. `GET /lotes/:id`
     devuelve `partidas[]` (`id, nombre, fecha, nAnimales, tieneInicial`).
@@ -171,16 +172,24 @@ El lint del UI usa `eslint.config.js` (sin autofix en el script). No `any` nuevo
   sólo la gestiona el admin (`puedeGestionar`) y sus ingredientes deben ser globales.
 - **Alimentación** (`pages/Alimentacion.tsx`, `components/AlimentarModal.tsx`, tipos en
   `lib/alimentacion.ts`): el modal de carga tiene el corral fijo arriba y permite **varias
-  filas** (dieta + fecha + cantidad por fila; botón "+ Agregar fila", la fila nueva hereda
-  fecha y dieta de la anterior). Envía `POST /alimentaciones/masiva` (la cantidad es la del
-  CORRAL; los animales del lote en enfermería reciben una estimación extra a la misma tasa —
-  ver DESIGN del server). El
+  filas** (dieta + fecha + **hora (def 12:00)** + cantidad por fila; botón "+ Agregar fila", la
+  fila nueva hereda fecha/hora y dieta de la anterior). Envía `POST /alimentaciones/masiva`; el
+  server **reconstruye los animales del corral al instante fecha+hora de cada fila** (la cantidad
+  es la del CORRAL; enfermería suma una estimación extra a la misma tasa — ver DESIGN del server).
+  Cada fila muestra, debajo, los **conteos reconstruidos por lote (común / enfermería)
+  editables** (precargados vía `GET /alimentaciones/estado-corral`, con botón "Recalcular"); si
+  el usuario los ajusta se envían como `ajuste` y **reemplazan** la reconstrucción. Sólo se manda
+  `ajuste` si se editó (si no, el server reconstruye al instante).
+  El
   histórico muestra el desglose corral/enfermería (kg y nº de animales) por evento y por lote.
   El botón "Alimentar" está en `/lotes` (junto a "Nuevo lote", sin corral) y en cada card de
   `CorralMapa` (corral preseleccionado, `onAlimentar(corralId)`). La vista `/alimentacion`
   lista con **filtros encadenados** (cliente/corral/lote se filtran entre sí sin el rango de
   fechas) y recibe `?lote=` para preseleccionar el lote desde `/lotes/:id`. En mobile se ven
-  **cards** y en desktop una **tabla**.
+  **cards** y en desktop una **tabla**. La **fecha + hora** es editable **inline** con el
+  componente compartido `CeldaFechaHora` (click → date+time → Enter/blur, `PATCH
+  /alimentaciones/:id` recalcula el reparto al nuevo instante, `escritura:alimento`);
+  `CeldaFechaHora` lo usan también las Salidas.
 - **CowIcon** (`src/components/CowIcon.tsx`): icono de vaca placeholder (la versión de
   lucide-react instalada no exporta "Cow"). Reemplazar por la marca final cuando exista.
 - **Pesajes** (`lib/pesos.ts` + componentes): la fuente de verdad del peso es `pesaje` (por

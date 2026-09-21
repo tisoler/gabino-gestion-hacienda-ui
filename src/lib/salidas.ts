@@ -10,6 +10,8 @@ export interface SalidaItemView {
 export interface SalidaView {
   id: number
   fecha: string
+  /** Hora 'HH:MM:SS' (default 12:00). */
+  hora: string
   tipo: 'lote' | 'partida' | 'animales'
   nAnimales: number
   pesoInicialTotal: number

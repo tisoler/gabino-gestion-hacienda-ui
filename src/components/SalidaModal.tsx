@@ -57,6 +57,7 @@ export function SalidaModal({
   const [tipo, setTipo] = useState<'lote' | 'partida' | 'animales'>('lote')
   const [idPartida, setIdPartida] = useState<string | number>('')
   const [fecha, setFecha] = useState(hoyIso())
+  const [hora, setHora] = useState('12:00')
   const [datos, setDatos] = useState<DatosSeleccionPesos>(inicialDatos)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -116,6 +117,7 @@ export function SalidaModal({
       })
       await api.post(`/lotes/${lote.id}/salidas`, {
         fecha,
+        hora,
         tipo,
         ...(tipo === 'partida' ? { idPartida: Number(idPartida) } : {}),
         animales,
@@ -190,11 +192,19 @@ export function SalidaModal({
               clearable={false}
             />
           ) : (
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-foreground">Fecha de la salida *</label>
-              <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className={inputCls} />
-            </div>
+            <div />
           )}
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-foreground">Fecha de la salida *</label>
+            <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className={inputCls} />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-foreground">Hora *</label>
+            <input type="time" value={hora} onChange={(e) => setHora(e.target.value)} className={inputCls} />
+          </div>
         </div>
 
         {/* Entrada de pesos unificada (totales + tabla) */}

@@ -202,7 +202,7 @@ export default function LoteDetalle() {
   const [traerModal, setTraerModal] = useState<Animal | null>(null)
   const [estadoModal, setEstadoModal] = useState<{ animal: Animal; estado: string } | null>(null)
   const [movModal, setMovModal] = useState<Animal | null>(null)
-  const [inicialModal, setInicialModal] = useState<{ editar: boolean; fecha: string | null } | null>(null)
+  const [inicialModal, setInicialModal] = useState<{ editar: boolean; idPartida: number | null } | null>(null)
   const [intermedioModal, setIntermedioModal] = useState<{ fecha: string | null } | null>(null)
   const [pesajeBusy, setPesajeBusy] = useState(false)
   const [finalModal, setFinalModal] = useState(false)
@@ -343,36 +343,26 @@ export default function LoteDetalle() {
   const filasInicialFaltantesFila = (): FilaLotePartida[] =>
     animalesSinInicial.map((a) => aFilaLP(a, null, null))
 
-  // Mapa animalId → fecha de su pesaje 'inicial'.
-  const inicialFechaPorAnimal = useMemo(() => {
-    const m = new Map<number, string>()
-    for (const p of pesajes) if (p.tipo === 'inicial') m.set(p.animalId, p.fecha)
-    return m
-  }, [pesajes])
-  // Fechas distintas de pesajes 'inicial' (asc): una fila por fecha.
-  const fechasIniciales = useMemo(() => {
-    const set = new Set<string>()
-    for (const p of pesajes) if (p.tipo === 'inicial') set.add(p.fecha)
-    return Array.from(set).sort()
-  }, [pesajes])
-
-  // Filas del editor del pesaje inicial de una FECHA (prefilled).
-  const filasInicialFecha = (fecha: string): FilaLotePartida[] =>
+  // Una fila de pesaje inicial por PARTIDA (el badge depende de la partida, no
+  // de la fecha: dos partidas pueden compartir fecha).
+  // Filas del editor del inicial de una partida (vivos + con inicial, incluidos
+  // salidos), prefilled.
+  const filasInicialFila = (idPartida: number): FilaLotePartida[] =>
     (lote?.animales ?? [])
-      .filter((a) => inicialFechaPorAnimal.get(a.id) === fecha)
+      .filter((a) => a.idPartida === idPartida)
+      .filter((a) => esVivo(a) || pesajeInicialPorAnimal.has(a.id))
       .map((a) => {
         const p = pesajeInicialPorAnimal.get(a.id)
         return aFilaLP(a, p?.peso ?? null, p?.desbaste ?? null)
       })
-  // Badge (partida) de una fila de inicial: la partida común de sus animales.
-  const badgeFechaInicial = (fecha: string): string => {
-    const partidasIds = new Set(filasInicialFecha(fecha).map((f) => f.idPartida ?? null))
-    if (partidasIds.size === 1) {
-      const pid = [...partidasIds][0]
-      const pt = partidas.find((p) => p.id === pid)
-      if (pt) return pt.nombre
-    }
-    return 'Lote'
+  // Fecha del pesaje inicial de una partida (mín de sus 'inicial').
+  const fechaInicialDe = (idPartida: number): string | null => {
+    const fs = (lote?.animales ?? [])
+      .filter((a) => a.idPartida === idPartida)
+      .map((a) => pesajeInicialPorAnimal.get(a.id)?.fecha)
+      .filter((f): f is string => !!f)
+      .sort()
+    return fs.length ? fs[0] : null
   }
   // Última fecha de pesaje inicial del lote (para precargar un inicial nuevo).
   const ultimaFechaInicial = useMemo(() => {
@@ -536,12 +526,20 @@ export default function LoteDetalle() {
     }
   }
 
-  const aplicarEstado = async (a: Animal, estado: string, motivoId?: number) => {
+  const aplicarEstado = async (
+    a: Animal,
+    estado: string,
+    motivoId?: number,
+    fecha?: string,
+    hora?: string,
+  ) => {
     if (!lote) return
     try {
       await api.patch(`/lotes/${lote.id}/animales/${a.id}`, {
         estado,
         ...(motivoId ? { idMotivo: motivoId } : {}),
+        ...(fecha ? { fecha } : {}),
+        ...(hora ? { hora } : {}),
       })
       await mutateLote()
       await mutate('/corrales/mapa')
@@ -555,12 +553,16 @@ export default function LoteDetalle() {
   const handleEnfermeria = async (
     a: Animal,
     motivoId: number,
-    idCorral?: number,
+    idCorral: number | undefined,
+    fecha: string,
+    hora: string,
   ) => {
     if (!lote) return
     try {
       await api.post(`/lotes/${lote.id}/animales/${a.id}/enfermeria`, {
         idMotivo: motivoId,
+        fecha,
+        hora,
         ...(idCorral ? { idCorral } : {}),
       })
       setEnviarModal(null)
@@ -576,12 +578,14 @@ export default function LoteDetalle() {
   const handleTraer = async (
     a: Animal,
     estado: 'sano' | 'muerto',
-    motivoId?: number,
+    motivoId: number | undefined,
+    fecha: string,
+    hora: string,
   ) => {
     if (!lote) return
     try {
       await api.delete(`/lotes/${lote.id}/animales/${a.id}/enfermeria`, {
-        data: { estado, ...(motivoId ? { idMotivo: motivoId } : {}) },
+        data: { estado, fecha, hora, ...(motivoId ? { idMotivo: motivoId } : {}) },
       })
       setTraerModal(null)
       await mutateLote()
@@ -706,7 +710,7 @@ export default function LoteDetalle() {
                 <div className="grid grid-cols-2 gap-2 [&>button]:justify-center sm:flex sm:flex-wrap sm:items-center sm:justify-end">
                   {animalesSinInicial.length > 0 && (
                     <button
-                      onClick={() => setInicialModal({ editar: false, fecha: null })}
+                      onClick={() => setInicialModal({ editar: false, idPartida: null })}
                       title={`Cargar el peso inicial de los ${animalesSinInicial.length} animales que faltan`}
                       className="inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium border border-info/40 text-white bg-info hover:opacity-90 transition-opacity cursor-pointer"
                     >
@@ -751,25 +755,28 @@ export default function LoteDetalle() {
 
             {/* Pesajes: peso inicial (por partida si hay varias) + intermedios (lote) */}
             <div className="border border-border rounded-md divide-y divide-border">
-              {fechasIniciales.length === 0 ? (
+              {partidas.length === 0 ? (
                 <GrupoInicial
                   titulo="Peso inicial"
                   badge="Lote"
                   animales={animalesEditor}
                   puedeEscribir={puedeEscribir}
-                  onEditar={() => setInicialModal({ editar: false, fecha: null })}
+                  onEditar={() => setInicialModal({ editar: false, idPartida: null })}
                 />
               ) : (
-                fechasIniciales.map((fecha) => (
-                  <GrupoInicial
-                    key={fecha}
-                    titulo={`Pesaje ${fmtFechaCorta(fecha)}`}
-                    badge={badgeFechaInicial(fecha)}
-                    animales={filasInicialFecha(fecha)}
-                    puedeEscribir={puedeEscribir}
-                    onEditar={() => setInicialModal({ editar: true, fecha })}
-                  />
-                ))
+                partidas.map((p) => {
+                  const fIni = fechaInicialDe(p.id) ?? p.fecha ?? null
+                  return (
+                    <GrupoInicial
+                      key={p.id}
+                      titulo={fIni ? `Pesaje ${fmtFechaCorta(fIni)}` : p.nombre}
+                      badge={partidas.length > 1 ? p.nombre : 'Lote'}
+                      animales={filasInicialFila(p.id)}
+                      puedeEscribir={puedeEscribir}
+                      onEditar={() => setInicialModal({ editar: true, idPartida: p.id })}
+                    />
+                  )
+                })
               )}
 
               {intermedias.map((fecha) => {
@@ -1116,8 +1123,8 @@ export default function LoteDetalle() {
           animalLabel={labelAnimal(enviarModal.animal)}
           enfermerias={enviarModal.enfermerias}
           onClose={() => setEnviarModal(null)}
-          onOk={async (motivoId, idCorral) => {
-            await handleEnfermeria(enviarModal.animal, motivoId, idCorral)
+          onOk={async (motivoId, idCorral, fecha, hora) => {
+            await handleEnfermeria(enviarModal.animal, motivoId, idCorral, fecha, hora)
           }}
         />
       )}
@@ -1126,8 +1133,8 @@ export default function LoteDetalle() {
         <TraerEnfermeriaModal
           animalLabel={labelAnimal(traerModal)}
           onClose={() => setTraerModal(null)}
-          onOk={async (estado, motivoId) => {
-            await handleTraer(traerModal, estado, motivoId)
+          onOk={async (estado, motivoId, fecha, hora) => {
+            await handleTraer(traerModal, estado, motivoId, fecha, hora)
           }}
         />
       )}
@@ -1137,8 +1144,8 @@ export default function LoteDetalle() {
           animalLabel={labelAnimal(estadoModal.animal)}
           estado={estadoModal.estado}
           onClose={() => setEstadoModal(null)}
-          onOk={async (motivoId) => {
-            await aplicarEstado(estadoModal.animal, estadoModal.estado, motivoId)
+          onOk={async (motivoId, fecha, hora) => {
+            await aplicarEstado(estadoModal.animal, estadoModal.estado, motivoId, fecha, hora)
             setEstadoModal(null)
           }}
         />
@@ -1156,8 +1163,8 @@ export default function LoteDetalle() {
         lote &&
         (() => {
           const esNuevo = !inicialModal.editar
-          const filas = esNuevo ? filasInicialFaltantesFila() : filasInicialFecha(inicialModal.fecha!)
-          const fIni = esNuevo ? ultimaFechaInicial : inicialModal.fecha
+          const filas = esNuevo ? filasInicialFaltantesFila() : filasInicialFila(inicialModal.idPartida!)
+          const fIni = esNuevo ? ultimaFechaInicial : fechaInicialDe(inicialModal.idPartida!)
           const totalVivos = (lote.animales ?? []).filter(esVivo).length
           return (
             <PesajeLotePartidaModal

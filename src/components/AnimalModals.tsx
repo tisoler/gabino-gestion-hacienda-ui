@@ -18,6 +18,46 @@ export interface EnfermeriaOpcion {
   nombre: string
 }
 
+const inputCls =
+  'px-3 py-2 bg-background border border-border rounded-md text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-primary transition-colors'
+
+const hoyIso = (): string => {
+  const d = new Date()
+  const m = `${d.getMonth() + 1}`.padStart(2, '0')
+  const day = `${d.getDate()}`.padStart(2, '0')
+  return `${d.getFullYear()}-${m}-${day}`
+}
+const hhmmActual = (): string => {
+  const d = new Date()
+  return `${`${d.getHours()}`.padStart(2, '0')}:${`${d.getMinutes()}`.padStart(2, '0')}`
+}
+
+/** Inputs de fecha + hora del movimiento (default ahora). */
+function FechaHora({
+  fecha,
+  hora,
+  onFecha,
+  onHora,
+}: {
+  fecha: string
+  hora: string
+  onFecha: (v: string) => void
+  onHora: (v: string) => void
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-3">
+      <div className="space-y-1.5">
+        <label className="text-xs font-medium text-foreground">Fecha *</label>
+        <input type="date" value={fecha} onChange={(e) => onFecha(e.target.value)} className={`${inputCls} w-full`} />
+      </div>
+      <div className="space-y-1.5">
+        <label className="text-xs font-medium text-foreground">Hora *</label>
+        <input type="time" value={hora} onChange={(e) => onHora(e.target.value)} className={`${inputCls} w-full`} />
+      </div>
+    </div>
+  )
+}
+
 export interface AnimalMovimiento {
   id: number
   tipo: string
@@ -107,10 +147,12 @@ export function EnviarEnfermeriaModal({
   /** Enfermerías activas de la empresa (si viene 1 sola se usa directo). */
   enfermerias: EnfermeriaOpcion[]
   onClose: () => void
-  onOk: (motivoId: number, idCorral?: number) => Promise<void>
+  onOk: (motivoId: number, idCorral: number | undefined, fecha: string, hora: string) => Promise<void>
 }) {
   const [motivoId, setMotivoId] = useState<string | number>('')
   const [idCorral, setIdCorral] = useState<string | number>('')
+  const [fecha, setFecha] = useState(hoyIso())
+  const [hora, setHora] = useState(hhmmActual())
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const hayQueElegir = enfermerias.length > 1
@@ -127,7 +169,7 @@ export function EnviarEnfermeriaModal({
     setBusy(true)
     setError('')
     try {
-      await onOk(Number(motivoId), hayQueElegir ? Number(idCorral) : undefined)
+      await onOk(Number(motivoId), hayQueElegir ? Number(idCorral) : undefined, fecha, `${hora}:00`)
     } catch (err) {
       console.error(err)
       setError(
@@ -144,6 +186,7 @@ export function EnviarEnfermeriaModal({
         El animal pasará al estado <strong>Enfermo</strong>. Se registra en su
         historial de movimientos.
       </p>
+      <FechaHora fecha={fecha} hora={hora} onFecha={setFecha} onHora={setHora} />
       <CatalogoSelect
         tipo="motivo"
         label="Razón / enfermedad *"
@@ -197,10 +240,12 @@ export function TraerEnfermeriaModal({
 }: {
   animalLabel: string
   onClose: () => void
-  onOk: (estado: 'sano' | 'muerto', motivoId?: number) => Promise<void>
+  onOk: (estado: 'sano' | 'muerto', motivoId: number | undefined, fecha: string, hora: string) => Promise<void>
 }) {
   const [estado, setEstado] = useState<'sano' | 'muerto' | ''>('')
   const [motivoId, setMotivoId] = useState<string | number>('')
+  const [fecha, setFecha] = useState(hoyIso())
+  const [hora, setHora] = useState(hhmmActual())
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
@@ -216,7 +261,7 @@ export function TraerEnfermeriaModal({
     setBusy(true)
     setError('')
     try {
-      await onOk(estado, motivoId ? Number(motivoId) : undefined)
+      await onOk(estado, motivoId ? Number(motivoId) : undefined, fecha, `${hora}:00`)
     } catch (err) {
       console.error(err)
       setError(
@@ -232,6 +277,7 @@ export function TraerEnfermeriaModal({
       <p className="text-xs text-muted-foreground">
         ¿Cómo sale el animal? Se registra en su historial de movimientos.
       </p>
+      <FechaHora fecha={fecha} hora={hora} onFecha={setFecha} onHora={setHora} />
       <div className="flex gap-2">
         {(['sano', 'muerto'] as const).map((e) => (
           <button
@@ -286,9 +332,11 @@ export function CambioEstadoModal({
   animalLabel: string
   estado: string
   onClose: () => void
-  onOk: (motivoId: number) => Promise<void>
+  onOk: (motivoId: number, fecha: string, hora: string) => Promise<void>
 }) {
   const [motivoId, setMotivoId] = useState<string | number>('')
+  const [fecha, setFecha] = useState(hoyIso())
+  const [hora, setHora] = useState(hhmmActual())
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
@@ -300,7 +348,7 @@ export function CambioEstadoModal({
     setBusy(true)
     setError('')
     try {
-      await onOk(Number(motivoId))
+      await onOk(Number(motivoId), fecha, `${hora}:00`)
     } catch (err) {
       console.error(err)
       setError(
@@ -319,6 +367,7 @@ export function CambioEstadoModal({
       <p className="text-xs text-muted-foreground">
         Se registra en el historial de movimientos del animal.
       </p>
+      <FechaHora fecha={fecha} hora={hora} onFecha={setFecha} onHora={setHora} />
       <CatalogoSelect
         tipo="motivo"
         label={estado === 'muerto' ? 'Causa de muerte *' : 'Razón / enfermedad *'}

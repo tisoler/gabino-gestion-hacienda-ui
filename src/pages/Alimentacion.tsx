@@ -2,17 +2,13 @@ import { useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import useSWR from 'swr'
 import { AlertCircle, Loader2, Utensils } from 'lucide-react'
-import { fetcher } from '../lib/api'
+import api, { fetcher } from '../lib/api'
 import { useAuth } from '../contexts/auth-context'
 import SelectAutocomplete from '../components/SelectAutocomplete'
 import { Table } from '../components/Table'
+import { CeldaFechaHora } from '../components/CeldaFechaHora'
 import type { AlimentacionView } from '../lib/alimentacion'
 
-const fmtFecha = (f: string): string => {
-  if (!f) return '—'
-  const d = new Date(f.length === 10 ? f + 'T00:00:00' : f)
-  return isNaN(d.getTime()) ? '—' : d.toLocaleDateString('es-AR')
-}
 const fmtKg = (n: number): string => n.toLocaleString('es-AR', { maximumFractionDigits: 2 })
 
 interface Filtros {
@@ -26,6 +22,7 @@ interface Filtros {
 export default function Alimentacion() {
   const { permisos, isSysAdmin } = useAuth()
   const puedeVer = permisos.includes('lectura:alimento')
+  const puedeEditar = permisos.includes('escritura:alimento')
   const [params] = useSearchParams()
   const [filtros, setFiltros] = useState<Filtros>({
     cliente: '',
@@ -34,8 +31,9 @@ export default function Alimentacion() {
     desde: '',
     hasta: '',
   })
+  const [error, setError] = useState('')
 
-  const { data: alimentaciones, isLoading } = useSWR<AlimentacionView[]>(
+  const { data: alimentaciones, isLoading, mutate: mutateAlimentaciones } = useSWR<AlimentacionView[]>(
     puedeVer ? '/alimentaciones' : null,
     fetcher,
     { revalidateOnFocus: false },
@@ -43,6 +41,20 @@ export default function Alimentacion() {
   const all = useMemo(() => alimentaciones ?? [], [alimentaciones])
 
   const set = (patch: Partial<Filtros>) => setFiltros((f) => ({ ...f, ...patch }))
+
+  const guardarFechaHora = async (a: AlimentacionView, nuevaFecha: string, nuevaHora: string) => {
+    try {
+      await api.patch(`/alimentaciones/${a.id}`, { fecha: nuevaFecha, hora: nuevaHora })
+      await mutateAlimentaciones()
+    } catch (err) {
+      console.error(err)
+      setError(
+        (err as { response?: { data?: { message?: string } } })?.response?.data
+          ?.message || 'No se pudo actualizar la fecha.',
+      )
+      throw err
+    }
+  }
 
   // Fila "toca" un filtro si alguno de sus lotes lo cumple.
   const coincide = (a: AlimentacionView, f: Filtros, ignorar?: keyof Filtros) => {
@@ -107,6 +119,15 @@ export default function Alimentacion() {
           </p>
         </div>
       </div>
+
+      {error && (
+        <div role="alert" className="p-3 bg-destructive-soft border border-destructive/20 text-destructive text-sm rounded-md flex items-center justify-between gap-3">
+          <span>{error}</span>
+          <button onClick={() => setError('')} className="text-destructive/70 hover:text-destructive cursor-pointer">
+            <AlertCircle className="size-4" strokeWidth={2} />
+          </button>
+        </div>
+      )}
 
       {/* Filtros */}
       <section className="bg-card border border-border rounded-lg p-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -190,11 +211,19 @@ export default function Alimentacion() {
                       <p className="text-sm font-semibold text-foreground">
                         {a.corral.nombre} · {a.dieta.nombre} (v{a.dieta.version})
                       </p>
-<p className="text-xs text-muted-foreground">
-                      {fmtFecha(a.fecha)} · {fmtKg(a.cantidadKg)} kg total · {a.nAnimales} animales
-                      {a.nAnimalesEnfermeria > 0 && ` + ${a.nAnimalesEnfermeria} en enfermería`} ·{' '}
-                      {fmtKg(a.cantidadPorAnimal)} kg/animal
-                    </p>
+<p className="text-xs text-muted-foreground flex flex-wrap items-center gap-x-1">
+                        <CeldaFechaHora
+                          fecha={a.fecha}
+                          hora={a.hora}
+                          puedeEscribir={puedeEditar}
+                          onGuardar={(f, h) => guardarFechaHora(a, f, h)}
+                        />
+                        <span>· {fmtKg(a.cantidadKg)} kg total · {a.nAnimales} animales</span>
+                        {a.nAnimalesEnfermeria > 0 && (
+                          <span>+ {a.nAnimalesEnfermeria} en enfermería ·</span>
+                        )}
+                        <span>{fmtKg(a.cantidadPorAnimal)} kg/animal</span>
+                      </p>
                     </div>
                   </div>
                   {isSysAdmin && a.empresa && (
@@ -242,8 +271,15 @@ export default function Alimentacion() {
               data={filtradas}
               columns={[
                 {
-                  header: 'Fecha',
-                  accessor: (a) => <span className="text-muted-foreground">{fmtFecha(a.fecha)}</span>,
+                  header: 'Fecha / Hora',
+                  accessor: (a) => (
+                    <CeldaFechaHora
+                      fecha={a.fecha}
+                      hora={a.hora}
+                      puedeEscribir={puedeEditar}
+                      onGuardar={(f, h) => guardarFechaHora(a, f, h)}
+                    />
+                  ),
                 },
                 {
                   header: 'Corral',

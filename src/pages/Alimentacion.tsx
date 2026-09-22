@@ -1,15 +1,21 @@
 import { useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import useSWR from 'swr'
-import { AlertCircle, Loader2, Utensils } from 'lucide-react'
-import api, { fetcher } from '../lib/api'
+import { AlertCircle, Loader2, Pencil, Utensils } from 'lucide-react'
+import { fetcher } from '../lib/api'
 import { useAuth } from '../contexts/auth-context'
 import SelectAutocomplete from '../components/SelectAutocomplete'
 import { Table } from '../components/Table'
-import { CeldaFechaHora } from '../components/CeldaFechaHora'
+import { AlimentarModal } from '../components/AlimentarModal'
 import type { AlimentacionView } from '../lib/alimentacion'
 
 const fmtKg = (n: number): string => n.toLocaleString('es-AR', { maximumFractionDigits: 2 })
+const fmtFecha = (f: string): string => {
+  if (!f) return '—'
+  const d = new Date(f.length === 10 ? f + 'T00:00:00' : f)
+  return isNaN(d.getTime()) ? '—' : d.toLocaleDateString('es-AR')
+}
+const hhmm = (h?: string | null): string => (h ? h.slice(0, 5) : '12:00')
 
 interface Filtros {
   cliente: string
@@ -31,7 +37,6 @@ export default function Alimentacion() {
     desde: '',
     hasta: '',
   })
-  const [error, setError] = useState('')
 
   const { data: alimentaciones, isLoading, mutate: mutateAlimentaciones } = useSWR<AlimentacionView[]>(
     puedeVer ? '/alimentaciones' : null,
@@ -42,19 +47,7 @@ export default function Alimentacion() {
 
   const set = (patch: Partial<Filtros>) => setFiltros((f) => ({ ...f, ...patch }))
 
-  const guardarFechaHora = async (a: AlimentacionView, nuevaFecha: string, nuevaHora: string) => {
-    try {
-      await api.patch(`/alimentaciones/${a.id}`, { fecha: nuevaFecha, hora: nuevaHora })
-      await mutateAlimentaciones()
-    } catch (err) {
-      console.error(err)
-      setError(
-        (err as { response?: { data?: { message?: string } } })?.response?.data
-          ?.message || 'No se pudo actualizar la fecha.',
-      )
-      throw err
-    }
-  }
+  const [editando, setEditando] = useState<AlimentacionView | null>(null)
 
   // Fila "toca" un filtro si alguno de sus lotes lo cumple.
   const coincide = (a: AlimentacionView, f: Filtros, ignorar?: keyof Filtros) => {
@@ -119,15 +112,6 @@ export default function Alimentacion() {
           </p>
         </div>
       </div>
-
-      {error && (
-        <div role="alert" className="p-3 bg-destructive-soft border border-destructive/20 text-destructive text-sm rounded-md flex items-center justify-between gap-3">
-          <span>{error}</span>
-          <button onClick={() => setError('')} className="text-destructive/70 hover:text-destructive cursor-pointer">
-            <AlertCircle className="size-4" strokeWidth={2} />
-          </button>
-        </div>
-      )}
 
       {/* Filtros */}
       <section className="bg-card border border-border rounded-lg p-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -212,18 +196,23 @@ export default function Alimentacion() {
                         {a.corral.nombre} · {a.dieta.nombre} (v{a.dieta.version})
                       </p>
 <p className="text-xs text-muted-foreground flex flex-wrap items-center gap-x-1">
-                        <CeldaFechaHora
-                          fecha={a.fecha}
-                          hora={a.hora}
-                          puedeEscribir={puedeEditar}
-                          onGuardar={(f, h) => guardarFechaHora(a, f, h)}
-                        />
+                        <span className="whitespace-nowrap">
+                          {fmtFecha(a.fecha)} · {hhmm(a.hora)}
+                        </span>
                         <span>· {fmtKg(a.cantidadKg)} kg total · {a.nAnimales} animales</span>
                         {a.nAnimalesEnfermeria > 0 && (
                           <span>+ {a.nAnimalesEnfermeria} en enfermería ·</span>
                         )}
                         <span>{fmtKg(a.cantidadPorAnimal)} kg/animal</span>
                       </p>
+                      {puedeEditar && (
+                        <button
+                          onClick={() => setEditando(a)}
+                          className="mt-1 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border border-border hover:bg-accent transition-colors cursor-pointer"
+                        >
+                          <Pencil className="size-3.5" strokeWidth={2} /> Editar
+                        </button>
+                      )}
                     </div>
                   </div>
                   {isSysAdmin && a.empresa && (
@@ -273,12 +262,9 @@ export default function Alimentacion() {
                 {
                   header: 'Fecha / Hora',
                   accessor: (a) => (
-                    <CeldaFechaHora
-                      fecha={a.fecha}
-                      hora={a.hora}
-                      puedeEscribir={puedeEditar}
-                      onGuardar={(f, h) => guardarFechaHora(a, f, h)}
-                    />
+                    <span className="text-muted-foreground whitespace-nowrap">
+                      {fmtFecha(a.fecha)} · {hhmm(a.hora)}
+                    </span>
                   ),
                 },
                 {
@@ -353,10 +339,45 @@ export default function Alimentacion() {
                       },
                     ]
                   : []),
+                ...(puedeEditar
+                  ? [
+                      {
+                        header: 'Acciones',
+                        accessor: (a: AlimentacionView) => (
+                          <button
+                            onClick={() => setEditando(a)}
+                            title="Editar alimentación"
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium border border-border hover:bg-accent transition-colors cursor-pointer"
+                          >
+                            <Pencil className="size-3.5" strokeWidth={2} /> Editar
+                          </button>
+                        ),
+                      },
+                    ]
+                  : []),
               ]}
             />
           </div>
         </>
+      )}
+
+      {editando && (
+        <AlimentarModal
+          corralReadonly
+          modoEdicion={{
+            id: editando.id,
+            idCorral: editando.corral.id,
+            corralNombre: editando.corral.nombre,
+            idDieta: editando.dieta.id,
+            cantidadKg: editando.cantidadCorralKg,
+            fecha: editando.fecha,
+            hora: editando.hora,
+          }}
+          onClose={() => setEditando(null)}
+          onSaved={async () => {
+            await mutateAlimentaciones()
+          }}
+        />
       )}
     </div>
   )

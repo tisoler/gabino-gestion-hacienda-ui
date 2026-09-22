@@ -39,25 +39,60 @@ const nuevaFila = (prev?: Fila): Fila => ({
   ajusteEditado: false,
 })
 
+/** Datos de una alimentación existente para editarla en el mismo modal. */
+export interface EdicionAlimentacion {
+  id: number
+  idCorral: number
+  corralNombre: string
+  idDieta: number
+  cantidadKg: number
+  fecha: string
+  hora: string
+}
+
 /**
  * Alimentar corral: corral fijo arriba + UNA O MÁS filas (dieta + fecha + hora
  * + cantidad). Cada fila muestra los animales del corral RECONSTRUIDOS a ese
  * instante (por lote: común y enfermería), editables como override del cálculo.
+ * En `modoEdicion` es una sola fila, el corral queda read-only y se guarda con PATCH.
  */
 export function AlimentarModal({
   initialCorralId,
+  corralReadonly = false,
+  modoEdicion,
   onClose,
   onSaved,
 }: {
   initialCorralId?: number
+  /** Corral no editable (modo edición). */
+  corralReadonly?: boolean
+  /** Si viene, el modal edita esa alimentación (una sola fila). */
+  modoEdicion?: EdicionAlimentacion
   onClose: () => void
   onSaved: () => Promise<void> | void
 }) {
   const { data: corrales } = useSWR<CorralOpcion[]>('/corrales', fetcher)
   const { data: dietas } = useSWR<DietaOpcion[]>('/dietas', fetcher)
 
-  const [idCorral, setIdCorral] = useState<string | number>(initialCorralId ?? '')
-  const [filas, setFilas] = useState<Fila[]>([nuevaFila()])
+  const [idCorral, setIdCorral] = useState<string | number>(
+    modoEdicion ? modoEdicion.idCorral : initialCorralId ?? '',
+  )
+  const [filas, setFilas] = useState<Fila[]>(() =>
+    modoEdicion
+      ? [
+          {
+            key: proxKey++,
+            idDieta: modoEdicion.idDieta,
+            fecha: modoEdicion.fecha,
+            hora: (modoEdicion.hora || '12:00:00').slice(0, 5),
+            cantidad: String(modoEdicion.cantidadKg),
+            ajuste: null,
+            ajusteCargando: false,
+            ajusteEditado: false,
+          },
+        ]
+      : [nuevaFila()],
+  )
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
@@ -139,14 +174,13 @@ export function AlimentarModal({
     if (!listo) return
     setBusy(true)
     try {
-      await api.post('/alimentaciones/masiva', {
-        idCorral: Number(idCorral),
-        filas: filas.map((f) => ({
+      if (modoEdicion) {
+        const f = filas[0]
+        await api.patch(`/alimentaciones/${modoEdicion.id}`, {
           idDieta: Number(f.idDieta),
           cantidadKg: parseFloat(f.cantidad.replace(',', '.')),
           fecha: f.fecha,
           hora: f.hora,
-          // Sólo si el usuario ajustó los conteos se manda el override.
           ...(f.ajusteEditado && f.ajuste
             ? {
                 ajuste: f.ajuste.map((a) => ({
@@ -156,8 +190,28 @@ export function AlimentarModal({
                 })),
               }
             : {}),
-        })),
-      })
+        })
+      } else {
+        await api.post('/alimentaciones/masiva', {
+          idCorral: Number(idCorral),
+          filas: filas.map((f) => ({
+            idDieta: Number(f.idDieta),
+            cantidadKg: parseFloat(f.cantidad.replace(',', '.')),
+            fecha: f.fecha,
+            hora: f.hora,
+            // Sólo si el usuario ajustó los conteos se manda el override.
+            ...(f.ajusteEditado && f.ajuste
+              ? {
+                  ajuste: f.ajuste.map((a) => ({
+                    loteId: a.loteId,
+                    nAnimales: a.nAnimales,
+                    nAnimalesEnfermeria: a.nAnimalesEnfermeria,
+                  })),
+                }
+              : {}),
+          })),
+        })
+      }
       await onSaved()
       onClose()
     } catch (err) {
@@ -179,7 +233,9 @@ export function AlimentarModal({
     >
       <div className="w-full max-w-3xl bg-card border border-border rounded-lg shadow-xl p-6 space-y-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between">
-          <h2 className="text-base font-semibold text-foreground">Alimentar corral</h2>
+          <h2 className="text-base font-semibold text-foreground">
+            {modoEdicion ? 'Editar alimentación' : 'Alimentar corral'}
+          </h2>
           <button
             onClick={onClose}
             className="p-1.5 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors cursor-pointer"
@@ -189,30 +245,43 @@ export function AlimentarModal({
           </button>
         </div>
         <p className="text-xs text-muted-foreground">
-          La cantidad de cada fila se reparte entre los lotes del corral según sus animales vivos
-          en ese instante (fecha + hora). Podés ajustar los conteos reconstruidos.
+          La cantidad se reparte entre los lotes del corral según sus animales vivos en ese
+          instante (fecha + hora). Podés ajustar los conteos reconstruidos.
         </p>
 
-        {/* Corral: único, siempre arriba */}
-        <SelectAutocomplete
-          label="Corral *"
-          placeholder="Elegir corral..."
-          value={idCorral}
-          onChange={cambiarCorral}
-          options={corralesActivos.map((c) => ({ value: c.id, label: c.nombre }))}
-          clearable={false}
-        />
+        {/* Corral: único, siempre arriba (read-only al editar) */}
+        {corralReadonly ? (
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-foreground">Corral</label>
+            <div className={`${inputCls} w-full bg-muted/40 text-muted-foreground`}>
+              {modoEdicion?.corralNombre ?? ''}
+            </div>
+          </div>
+        ) : (
+          <SelectAutocomplete
+            label="Corral *"
+            placeholder="Elegir corral..."
+            value={idCorral}
+            onChange={cambiarCorral}
+            options={corralesActivos.map((c) => ({ value: c.id, label: c.nombre }))}
+            clearable={false}
+          />
+        )}
 
         {/* Filas */}
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <label className="text-xs font-medium text-foreground">Alimentaciones ({filas.length})</label>
-            <button
-              onClick={agregarFila}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium border border-border hover:bg-accent transition-colors cursor-pointer"
-            >
-              <Plus className="size-3.5" strokeWidth={2} /> Agregar fila
-            </button>
+            <label className="text-xs font-medium text-foreground">
+              {modoEdicion ? 'Alimentación' : `Alimentaciones (${filas.length})`}
+            </label>
+            {!modoEdicion && (
+              <button
+                onClick={agregarFila}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium border border-border hover:bg-accent transition-colors cursor-pointer"
+              >
+                <Plus className="size-3.5" strokeWidth={2} /> Agregar fila
+              </button>
+            )}
           </div>
 
           {filas.map((f, i) => (
@@ -355,7 +424,7 @@ export function AlimentarModal({
             className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium shadow-sm hover:opacity-90 transition-opacity disabled:opacity-50 cursor-pointer"
           >
             {busy ? <Loader2 className="size-4 animate-spin" /> : null}
-            Registrar {filas.length} alimentación{filas.length !== 1 ? 'es' : ''}
+            {modoEdicion ? 'Guardar cambios' : `Registrar ${filas.length} alimentación${filas.length !== 1 ? 'es' : ''}`}
           </button>
         </div>
       </div>

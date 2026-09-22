@@ -186,10 +186,11 @@ El lint del UI usa `eslint.config.js` (sin autofix en el script). No `any` nuevo
   `CorralMapa` (corral preseleccionado, `onAlimentar(corralId)`). La vista `/alimentacion`
   lista con **filtros encadenados** (cliente/corral/lote se filtran entre sí sin el rango de
   fechas) y recibe `?lote=` para preseleccionar el lote desde `/lotes/:id`. En mobile se ven
-  **cards** y en desktop una **tabla**. La **fecha + hora** es editable **inline** con el
-  componente compartido `CeldaFechaHora` (click → date+time → Enter/blur, `PATCH
-  /alimentaciones/:id` recalcula el reparto al nuevo instante, `escritura:alimento`);
-  `CeldaFechaHora` lo usan también las Salidas.
+  **cards** y en desktop una **tabla**. La **fecha + hora es read-only** en la vista; para editar
+  se usa el botón **✎ Editar** de la fila, que reabre el `AlimentarModal` en `modoEdicion`
+  (corral read-only, una sola fila, conteos reconstruidos editables) y guarda con `PATCH
+  /alimentaciones/:id` (recalcula el reparto al nuevo instante). `CeldaFechaHora` (fecha+hora +
+  ✓/✗) la usan las **Salidas**.
 - **CowIcon** (`src/components/CowIcon.tsx`): icono de vaca placeholder (la versión de
   lucide-react instalada no exporta "Cow"). Reemplazar por la marca final cuando exista.
 - **Pesajes** (`lib/pesos.ts` + componentes): la fuente de verdad del peso es `pesaje` (por

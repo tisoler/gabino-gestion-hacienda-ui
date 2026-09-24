@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { round2 } from '../lib/pesos'
 
 export interface FilaSeleccionPesos {
@@ -55,6 +55,41 @@ export function SeleccionAnimalesPesos({
   const [desbastes, setDesbastes] = useState<Record<number, string>>({})
   const [pesoTotal, setPesoTotal] = useState('')
   const [desbasteTotal, setDesbasteTotal] = useState('')
+  const [busqueda, setBusqueda] = useState('')
+  const masterRef = useRef<HTMLInputElement>(null)
+
+  // Visibles (alcance "Animales"): filtrados por el buscador y ordenados por
+  // caravana ascendente (orden natural). Lote/Partida mantiene su orden.
+  const visibles = useMemo(() => {
+    if (!seleccionable) return animales
+    const q = busqueda.trim().toLowerCase()
+    const filtrados = q
+      ? animales.filter(
+        (a) =>
+          (a.caravana ?? '').toLowerCase().includes(q) ||
+          (a.nAnimal != null && String(a.nAnimal).includes(q)),
+      )
+      : [...animales]
+    return filtrados.sort((a, b) => {
+      const ca = a.caravana ?? ''
+      const cb = b.caravana ?? ''
+      if (!ca && cb) return 1
+      if (ca && !cb) return -1
+      const cmp = ca.localeCompare(cb, 'es', { numeric: true })
+      if (cmp !== 0) return cmp
+      const na = a.nAnimal ?? Number.MAX_SAFE_INTEGER
+      const nb = b.nAnimal ?? Number.MAX_SAFE_INTEGER
+      return na - nb || a.id - b.id
+    })
+  }, [animales, seleccionable, busqueda])
+
+  const nVisiblesElegidos = visibles.filter((a) => seleccion.has(a.id)).length
+  const todosElegidos = visibles.length > 0 && nVisiblesElegidos === visibles.length
+  useEffect(() => {
+    if (masterRef.current) {
+      masterRef.current.indeterminate = !todosElegidos && nVisiblesElegidos > 0
+    }
+  }, [todosElegidos, nVisiblesElegidos])
 
   // Incluidos = los seleccionados (Animales) o todos (Lote/Partida).
   const incluidos = useMemo(
@@ -92,13 +127,20 @@ export function SeleccionAnimalesPesos({
     setSeleccion(next)
     redistribuir(next)
   }
-  const seleccionarTodos = () => {
-    const next = new Set(animales.map((a) => a.id))
+  const toggleTodos = () => {
+    const next = new Set(seleccion)
+    if (todosElegidos) for (const a of visibles) next.delete(a.id)
+    else for (const a of visibles) next.add(a.id)
     setSeleccion(next)
     redistribuir(next)
   }
-  const limpiar = () => {
-    const next = new Set<number>()
+  // Invierte la selección de los visibles (los filtrados por el buscador).
+  const invertirVisibles = () => {
+    const next = new Set(seleccion)
+    for (const a of visibles) {
+      if (next.has(a.id)) next.delete(a.id)
+      else next.add(a.id)
+    }
     setSeleccion(next)
     redistribuir(next)
   }
@@ -176,20 +218,6 @@ export function SeleccionAnimalesPesos({
         <label className="text-xs font-medium text-foreground">
           {titulo} ({seleccionable ? seleccion.size : animales.length} de {animales.length})
         </label>
-        {seleccionable && (
-          <div className="flex items-center gap-2 text-xs shrink-0">
-            <button
-              onClick={seleccionarTodos}
-              className="text-primary hover:underline cursor-pointer"
-            >
-              Seleccionar todos
-            </button>
-            <span className="text-muted-foreground">·</span>
-            <button onClick={limpiar} className="text-primary hover:underline cursor-pointer">
-              Limpiar
-            </button>
-          </div>
-        )}
       </div>
 
       {/* Totales: siempre visibles */}
@@ -221,20 +249,53 @@ export function SeleccionAnimalesPesos({
           />
         </div>
       </div>
+      {seleccionable && (
+        <div className="flex items-center gap-3 mt-3">
+          <label
+            className="flex items-center gap-1.5 text-xs text-foreground shrink-0 cursor-pointer"
+            title="Seleccionar todos los visibles"
+          >
+            <input
+              ref={masterRef}
+              type="checkbox"
+              checked={todosElegidos}
+              onChange={toggleTodos}
+              className="size-4 accent-primary cursor-pointer"
+            />
+            Todos
+          </label>
+          <button
+            type="button"
+            onClick={invertirVisibles}
+            title="Invertir la selección de los visibles"
+            className="text-xs text-primary hover:underline shrink-0 cursor-pointer"
+          >
+            Invertir
+          </button>
+          <input
+            type="search"
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+            className={`${inputCls} flex-1 min-w-0`}
+            placeholder="Buscar caravana…"
+          />
+        </div>
+      )}
       <p className="text-xs text-muted-foreground">
         {editables.length > 0
-          ? `El total se reparte ÷ ${editables.length} (los ${
-              seleccionable ? 'seleccionados' : 'del alcance'
-            } sin peso final); si editás un animal, se recalcula el total.`
+          ? `El total se reparte ÷ ${editables.length} (los ${seleccionable ? 'seleccionados' : 'del alcance'
+          } sin peso final); si editás un animal, se recalcula el total.`
           : 'Seleccioná animales sin peso final para repartir el total.'}
       </p>
 
       {/* Tabla única: altura de fila constante (reservada para los inputs) */}
       <div className="border border-border rounded-md divide-y divide-border max-h-72 overflow-y-auto">
-        {animales.length === 0 && (
-          <p className="px-3 py-3 text-xs text-muted-foreground">No hay animales.</p>
+        {visibles.length === 0 && (
+          <p className="px-3 py-3 text-xs text-muted-foreground">
+            {animales.length === 0 ? 'No hay animales.' : 'Sin coincidencias para la búsqueda.'}
+          </p>
         )}
-        {animales.map((a) => {
+        {visibles.map((a) => {
           const elegido = seleccionable ? seleccion.has(a.id) : true
           return (
             <div

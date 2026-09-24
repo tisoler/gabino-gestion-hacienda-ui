@@ -229,6 +229,22 @@ export default function LoteDetalle() {
   const baseFecha = useMemo(() => fechaBase(pesajes) ?? lote?.fecha ?? null, [pesajes, lote])
   const intermedias = useMemo(() => fechasIntermedias(pesajes), [pesajes])
   const finales = useMemo(() => fechasFinales(pesajes), [pesajes])
+  // Tabla de animales: caravana ascendente (orden natural).
+  const animalesOrdenados = useMemo(
+    () =>
+      [...(lote?.animales ?? [])].sort((a, b) => {
+        const ca = a.caravana ?? ''
+        const cb = b.caravana ?? ''
+        if (!ca && cb) return 1
+        if (ca && !cb) return -1
+        const cmp = ca.localeCompare(cb, 'es', { numeric: true })
+        if (cmp !== 0) return cmp
+        const na = a.nAnimal ?? Number.MAX_SAFE_INTEGER
+        const nb = b.nAnimal ?? Number.MAX_SAFE_INTEGER
+        return na - nb || a.id - b.id
+      }),
+    [lote],
+  )
   // Mapa (animalId, fecha) → pesaje para las celdas intermedias.
   const pesajePorAnimalFecha = useMemo(() => {
     const m = new Map<string, PesajeDto>()
@@ -945,19 +961,14 @@ export default function LoteDetalle() {
             </div>
 
             <Table<Animal>
-              data={lote.animales}
+              data={animalesOrdenados}
               emptyMessage="Todavía no hay animales en este lote."
               columns={[
                 {
-                  header: 'N°',
+                  header: 'Caravana',
                   accessor: (a) => (
                     <div className="flex items-center gap-1.5">
-                      <span
-                        className="size-2.5 rounded-full shrink-0 border border-border"
-                        style={{ backgroundColor: getLoteColor(lote.color) }}
-                        aria-hidden
-                      />
-                      <span className="font-medium">{a.nAnimal ?? '—'}</span>
+                      <span className="font-medium text-foreground">{a.caravana || '—'}</span>
                       {a.idCorralEnfermeria != null && (
                         <span className="inline-flex text-[9px] font-semibold uppercase tracking-wide text-info bg-info-soft rounded-full px-1.5 py-0.5">
                           Enfermería
@@ -966,7 +977,6 @@ export default function LoteDetalle() {
                     </div>
                   ),
                 },
-                { header: 'Caravana', accessor: (a) => <span className="font-medium text-foreground">{a.caravana || '—'}</span> },
                 { header: 'Sexo', accessor: (a) => <span className="text-muted-foreground">{a.sexo === 'MACHO' ? 'Macho' : a.sexo === 'HEMBRA' ? 'Hembra' : '—'}</span> },
                 { header: 'Pelaje', accessor: (a) => <span className="text-muted-foreground">{a.pelajeNombre || '—'}</span> },
                 { header: 'Raza', accessor: (a) => <span className="text-muted-foreground">{a.razaNombre || '—'}</span> },
@@ -1661,7 +1671,14 @@ function AnimalModal({
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1">
             <label className="text-xs font-medium text-foreground">N° animal</label>
-            <input type="number" value={nAnimal} onChange={(e) => setNAnimal(e.target.value)} className={inputCls} />
+            <input
+              type="number"
+              value={nAnimal}
+              onChange={(e) => setNAnimal(e.target.value)}
+              readOnly={esEdicion}
+              title={esEdicion ? 'El N° no se puede editar' : undefined}
+              className={`${inputCls} ${esEdicion ? 'opacity-60 cursor-not-allowed' : ''}`}
+            />
           </div>
           <div className="space-y-1">
             <label className="text-xs font-medium text-foreground">Caravana *</label>

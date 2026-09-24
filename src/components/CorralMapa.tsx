@@ -39,6 +39,18 @@ interface DragItem {
   corralOrigenId: number
 }
 
+/** Fichas ordenadas por lote y luego por caravana (orden natural). */
+function ordenarFichas(animales: TokenAnimal[]): TokenAnimal[] {
+  return [...animales].sort((a, b) => {
+    if (a.loteId !== b.loteId) return a.loteId - b.loteId
+    const ca = a.caravana ?? (a.nAnimal != null ? String(a.nAnimal) : '')
+    const cb = b.caravana ?? (b.nAnimal != null ? String(b.nAnimal) : '')
+    const cmp = ca.localeCompare(cb, 'es', { numeric: true })
+    if (cmp !== 0) return cmp
+    return a.animalId - b.animalId
+  })
+}
+
 /**
  * Panel de corrales para la vista de Lotes (permiso lectura:corral).
  * Cada animal es una ficha con el color de su lote y su número:
@@ -173,6 +185,7 @@ export function CorralMapa({
   const renderCard = (c: CorralMapaItem): ReactNode => {
     const esValido = drag ? destinoValido(drag, c) : false
     const esSobre = esValido && overCorralId === c.id
+    const fichas = ordenarFichas(c.animales)
     // Durante el drag: los destinos válidos quedan claros/resaltados y
     // los inválidos se ven deshabilitados.
     const dragCls = drag
@@ -268,7 +281,7 @@ export function CorralMapa({
           </p>
         ) : (
           <div className="flex flex-wrap gap-1.5 min-h-8">
-            {c.animales.map((a) => {
+            {fichas.map((a) => {
               const muerto = a.estado === 'muerto'
               const draggable = canMover && !muerto
               const arrastrando = drag?.animalId === a.animalId

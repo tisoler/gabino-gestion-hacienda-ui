@@ -212,7 +212,8 @@ export default function LoteDetalle() {
   const [salidaModal, setSalidaModal] = useState(false)
   const [error, setError] = useState('')
 
-  const labelAnimal = (a: Animal) => `Animal ${a.nAnimal ?? a.id}`
+  const labelAnimal = (a: Animal) =>
+    a.caravana ? `Car. ${a.caravana}` : `Animal ${a.nAnimal ?? a.id}`
 
   // Próximo N° de animal: el último del lote + 1 (para precargar en los alta).
   const siguienteN = useMemo(() => {
@@ -1154,7 +1155,7 @@ export default function LoteDetalle() {
       {movModal && lote && (
         <MovimientosModal
           loteId={lote.id}
-          animal={{ id: movModal.id, nAnimal: movModal.nAnimal }}
+          animal={{ id: movModal.id, nAnimal: movModal.nAnimal, caravana: movModal.caravana }}
           onClose={() => setMovModal(null)}
         />
       )}

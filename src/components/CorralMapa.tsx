@@ -81,6 +81,8 @@ export function CorralMapa({
 
   const [drag, setDrag] = useState<DragItem | null>(null)
   const [overCorralId, setOverCorralId] = useState<number | null>(null)
+  // Token para no aplicar un drag que ya terminó antes del próximo frame.
+  const dragTokenRef = useRef(0)
   // Cards de corral colapsadas (por id). Por defecto expandidas.
   const [colapsados, setColapsados] = useState<Record<number, boolean>>({})
   const [saving, setSaving] = useState(false)
@@ -107,6 +109,7 @@ export function CorralMapa({
   }
 
   const clearDrag = () => {
+    dragTokenRef.current += 1
     setDrag(null)
     setOverCorralId(null)
     suppressClickRef.current = true
@@ -274,15 +277,24 @@ export function CorralMapa({
                   key={a.animalId}
                   draggable={draggable}
                   onDragStart={(e) => {
-                    setDrag({
+                    // No mutar el layout dentro del dragstart: al activar `drag`
+                    // se expanden las cards colapsadas y se monta el dock, y ese
+                    // cambio mueve la ficha y aborta el DnD nativo. Se difiere un
+                    // frame, después de que el navegador capture el arrastre.
+                    const item: DragItem = {
                       animalId: a.animalId,
                       loteId: a.loteId,
                       enEnfermeria: c.tipo === CORRAL_TIPOS.ENFERMERIA,
                       corralOrigenId: c.id,
-                    })
-                    setError('')
+                    }
+                    dragTokenRef.current += 1
+                    const token = dragTokenRef.current
                     e.dataTransfer.effectAllowed = 'move'
                     e.dataTransfer.setData('text/plain', String(a.animalId))
+                    setError('')
+                    requestAnimationFrame(() => {
+                      if (dragTokenRef.current === token) setDrag(item)
+                    })
                   }}
                   onDragEnd={clearDrag}
                   onClick={() => {
@@ -409,9 +421,14 @@ export function CorralMapa({
           animalLabel={labelDe(pendiente.item)}
           enfermerias={[{ id: pendiente.destino.id, nombre: pendiente.destino.nombre }]}
           onClose={() => setPendiente(null)}
-          onOk={async (motivoId) => {
+          onOk={async (motivoId, _idCorral, fecha, hora) => {
             await confirmar((base) =>
-              api.post(base, { idCorral: pendiente.destino.id, idMotivo: motivoId }),
+              api.post(base, {
+                idCorral: pendiente.destino.id,
+                idMotivo: motivoId,
+                fecha,
+                hora,
+              }),
             )
           }}
         />
@@ -421,9 +438,16 @@ export function CorralMapa({
         <TraerEnfermeriaModal
           animalLabel={labelDe(pendiente.item)}
           onClose={() => setPendiente(null)}
-          onOk={async (estado, motivoId) => {
+          onOk={async (estado, motivoId, fecha, hora) => {
             await confirmar((base) =>
-              api.delete(base, { data: { estado, ...(motivoId ? { idMotivo: motivoId } : {}) } }),
+              api.delete(base, {
+                data: {
+                  estado,
+                  ...(motivoId ? { idMotivo: motivoId } : {}),
+                  fecha,
+                  hora,
+                },
+              }),
             )
           }}
         />
@@ -436,6 +460,7 @@ export function CorralMapa({
             id: movAnimal.animalId,
             nAnimal: movAnimal.nAnimal,
             loteNombre: movAnimal.loteNombre,
+            caravana: movAnimal.caravana,
           }}
           onClose={() => setMovAnimal(null)}
         />

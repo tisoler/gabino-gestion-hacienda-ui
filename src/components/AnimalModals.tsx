@@ -81,9 +81,9 @@ const ModalShell = ({
   children: React.ReactNode
 }) => (
   <div
-        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-foreground/40 backdrop-blur-sm"
-        onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}
-      >
+    className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-foreground/40 backdrop-blur-sm"
+    onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}
+  >
     <div className="w-full max-w-md bg-card border border-border rounded-lg shadow-xl p-6 space-y-4 max-h-[90vh] overflow-y-auto">
       <div className="flex items-center justify-between">
         <h2 className="text-base font-semibold text-foreground">{titulo}</h2>
@@ -205,11 +205,10 @@ export function EnviarEnfermeriaModal({
                 key={e.id}
                 type="button"
                 onClick={() => setIdCorral(e.id)}
-                className={`px-3 py-1.5 rounded-md text-xs font-medium border transition-colors cursor-pointer ${
-                  idCorral === e.id
-                    ? 'border-primary bg-primary-soft text-primary'
-                    : 'border-border text-muted-foreground hover:bg-accent'
-                }`}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium border transition-colors cursor-pointer ${idCorral === e.id
+                  ? 'border-primary bg-primary-soft text-primary'
+                  : 'border-border text-muted-foreground hover:bg-accent'
+                  }`}
               >
                 {e.nombre}
               </button>
@@ -284,13 +283,12 @@ export function TraerEnfermeriaModal({
             key={e}
             type="button"
             onClick={() => setEstado(e)}
-            className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-md text-sm font-medium border transition-colors cursor-pointer ${
-              estado === e
-                ? e === 'muerto'
-                  ? 'border-muted-foreground bg-muted text-foreground'
-                  : 'border-success bg-success-soft text-success'
-                : 'border-border text-muted-foreground hover:bg-accent'
-            }`}
+            className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-md text-sm font-medium border transition-colors cursor-pointer ${estado === e
+              ? e === 'muerto'
+                ? 'border-muted-foreground bg-muted text-foreground'
+                : 'border-success bg-success-soft text-success'
+              : 'border-border text-muted-foreground hover:bg-accent'
+              }`}
           >
             {e === 'muerto' ? (
               <AlertCircle className="size-4" strokeWidth={2} />
@@ -405,7 +403,7 @@ export function MovimientosModal({
   onClose,
 }: {
   loteId: number
-  animal: { id: number; nAnimal: number | null; loteNombre?: string }
+  animal: { id: number; nAnimal: number | null; caravana: string | null; loteNombre?: string }
   onClose: () => void
 }) {
   const { data: movimientos, isLoading } = useSWR<AnimalMovimiento[]>(
@@ -415,7 +413,7 @@ export function MovimientosModal({
 
   return (
     <ModalShell
-      titulo={`Movimientos · Animal ${animal.nAnimal ?? animal.id}${animal.loteNombre ? ` · ${animal.loteNombre}` : ''}`}
+      titulo={`Movimientos · Animal ${animal.caravana ? `Car. ${animal.caravana}` : animal.nAnimal ?? animal.id}${animal.loteNombre ? ` · ${animal.loteNombre}` : ''}`}
       onClose={onClose}
     >
       {isLoading ? (

@@ -1,5 +1,5 @@
-export interface IngredienteView {
-  idIngrediente: number
+export interface InsumoView {
+  idInsumo: number
   nombre: string
   porcentaje: number
 }
@@ -13,11 +13,11 @@ export interface DietaView {
   activa: boolean
   version: number
   actualizadaEn: string | null
-  ingredientes: IngredienteView[]
+  insumos: InsumoView[]
 }
 
-/** Kg de un ingrediente para una cantidad dada de dieta. */
-export const kgIngrediente = (cantidadKg: number, porcentaje: number): number =>
+/** Kg de un insumo para una cantidad dada de dieta. */
+export const kgInsumo = (cantidadKg: number, porcentaje: number): number =>
   Math.round(((cantidadKg * porcentaje) / 100) * 100) / 100
 
 export const fmtKg = (n: number): string =>

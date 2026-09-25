@@ -165,11 +165,14 @@ El lint del UI usa `eslint.config.js` (sin autofix en el script). No `any` nuevo
   `components/CalculadoraDietas.tsx`, tipos en `lib/dietas.ts`): módulo de alimentación.
   Izquierda lista de dietas (el lector ve activas; con `escritura:dieta` todas + toggle
   activar/desactivar + "Nueva versión" + "Historial"); derecha calculadora (dieta + kg a
-  preparar, default 2500 → kg por ingrediente). El modal de alta usa `CatalogoSelect
-  tipo="ingrediente"` por fila + % (suma debe dar 100, el nuevo ingrediente trae el
-  restante). Una dieta no se edita: se versiona (`POST /dietas`). **Alcance**: el sys-admin
+  preparar, default 2500 → kg por insumo). El modal de alta usa un `SelectAutocomplete`
+  de insumos (categoría "Ingrediente dieta", según alcance) por fila + % (suma debe dar 100,
+  el nuevo insumo trae el restante); si lo tipeado no existe, abre el `InsumoModal`
+  compartido (nombre prefill, categoría fija sólo-lectura, alcance de la dieta): con
+  `escritura:insumo` persiste por `POST /insumos`, si no queda local y el server lo crea al
+  guardar la dieta. Una dieta no se edita: se versiona (`POST /dietas`). **Alcance**: el sys-admin
   elige Global o una empresa (`idEmpresa` null/número) y ve badge "Global"; una dieta global
-  sólo la gestiona el admin (`puedeGestionar`) y sus ingredientes deben ser globales.
+  sólo la gestiona el admin (`puedeGestionar`) y sus insumos deben ser globales.
 - **Alimentación** (`pages/Alimentacion.tsx`, `components/AlimentarModal.tsx`, tipos en
   `lib/alimentacion.ts`): el modal de carga tiene el corral fijo arriba y permite **varias
   filas** (dieta + fecha + **hora (def 12:00)** + cantidad por fila; botón "+ Agregar fila", la
@@ -226,7 +229,12 @@ activa/desactiva) · `/alimentacion` (histórico de alimentaciones con filtros e
 cliente/corral/lote/rango de fechas; `lectura:alimento` ve, `escritura:alimento` registra
 desde `/lotes` o el mapa de corrales) · `/salidas` (histórico de salidas con filtros por
 cliente/corral/lote/partida/fechas y la diferencia de peso del grupo; `lectura:salida` ve,
-`escritura:salida` registra desde la sección Pesajes del lote) · `/usuarios` (sys-admin, asignar roles) ·
+`escritura:salida` registra desde la sección Pesajes del lote) · `/insumos` (catálogo de
+insumos con precio de referencia, filtro de alcance Todas/Global/Por empresa y modal de
+alta/edición estilo Corrales (`components/InsumoModal.tsx`, reutilizado por el alta
+on-the-fly en dietas con `nombreInicial`/`categoriaFija`/`alcanceFijo`); `lectura:insumo`
+ve activos, `escritura:insumo` gestiona; las categorías se crean inline desde el modal
+con `SelectAutocomplete` + alta local) · `/usuarios` (sys-admin, asignar roles) ·
 `/configuracion` (sys-admin, limpiar caché)
 
 **Cliente**: el **mapa de Lotes** (`/corrales/mapa`) usa `lectura:lote` y el server lo filtra a

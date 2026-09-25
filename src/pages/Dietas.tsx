@@ -22,14 +22,14 @@ const extractMsg = (err: unknown, fallback: string): string =>
  * Derecha: calculadora de raciones.
  */
 export default function Dietas() {
-  const { permisos, isSysAdmin } = useAuth()
+  const { permisos, isSysAdmin, currentEmpresaId } = useAuth()
   const { mutate } = useSWRConfig()
   const puedeVer = permisos.includes('lectura:dieta')
   const puedeEscribir = permisos.includes('escritura:dieta')
 
   const [formOpen, setFormOpen] = useState(false)
   const [inicial, setInicial] = useState<
-    | { nombre: string; ingredientes: { idIngrediente: number; porcentaje: number }[]; idEmpresa: number | null }
+    | { nombre: string; insumos: { idInsumo: number; porcentaje: number }[]; idEmpresa: number | null }
     | undefined
   >(undefined)
   const [historialDe, setHistorialDe] = useState<DietaView | null>(null)
@@ -58,7 +58,7 @@ export default function Dietas() {
     setFormOpen(true)
   }
   const abrirNuevaVersion = (d: DietaView) => {
-    setInicial({ nombre: d.nombre, ingredientes: d.ingredientes, idEmpresa: d.idEmpresa })
+    setInicial({ nombre: d.nombre, insumos: d.insumos, idEmpresa: d.idEmpresa })
     setFormOpen(true)
   }
 
@@ -149,10 +149,10 @@ export default function Dietas() {
                   </div>
 
                   <ul className="space-y-1">
-                    {d.ingredientes.map((ing) => (
-                      <li key={ing.idIngrediente} className="flex items-center justify-between text-sm">
-                        <span className="text-foreground truncate">{ing.nombre}</span>
-                        <span className="text-muted-foreground tabular-nums shrink-0">{ing.porcentaje}%</span>
+                    {d.insumos.map((ins) => (
+                      <li key={ins.idInsumo} className="flex items-center justify-between text-sm">
+                        <span className="text-foreground truncate">{ins.nombre}</span>
+                        <span className="text-muted-foreground tabular-nums shrink-0">{ins.porcentaje}%</span>
                       </li>
                     ))}
                   </ul>
@@ -199,6 +199,8 @@ export default function Dietas() {
           inicial={inicial}
           empresas={empresas ?? []}
           puedeElegirAlcance={isSysAdmin}
+          puedeCrearInsumo={permisos.includes('escritura:insumo')}
+          currentEmpresaId={currentEmpresaId}
           onClose={() => setFormOpen(false)}
           onOk={async () => {
             await mutate(listKey)
@@ -248,9 +250,9 @@ function HistorialModal({ dieta, onClose }: { dieta: DietaView; onClose: () => v
                 </div>
                 <p className="text-xs text-muted-foreground">{fmtFecha(v.actualizadaEn)}</p>
                 <ul className="flex flex-wrap gap-1.5">
-                  {v.ingredientes.map((ing) => (
-                    <li key={ing.idIngrediente} className="text-xs bg-muted rounded-full px-2 py-0.5 text-foreground">
-                      {ing.nombre} · {ing.porcentaje}%
+                  {v.insumos.map((ins) => (
+                    <li key={ins.idInsumo} className="text-xs bg-muted rounded-full px-2 py-0.5 text-foreground">
+                      {ins.nombre} · {ins.porcentaje}%
                     </li>
                   ))}
                 </ul>

@@ -61,14 +61,21 @@ export const TIPOS_MOVIMIENTO: Record<string, string> = {
   cambio_estado: 'Cambio de estado',
 }
 
+/** Unidades admitidas para el precio de referencia de un insumo. */
+export const INSUMO_UNIDADES = ['kg', 'unidad'] as const
+
+export const INSUMO_UNIDAD_LABELS: Record<string, string> = {
+  kg: 'kg',
+  unidad: 'unidad',
+}
+
 /**
  * Paleta de colores por lote (replica la PALETA_LOTE del server). El mapa de
  * corrales pinta la ficha de cada animal con el color de su lote.
  */
 export const PALETA_LOTE = [
-  '#8B5E34', // marrón (marca)
-  '#2F6F4F', // verde
   '#B45309', // ámbar
+  '#2F6F4F', // verde
   '#1D4ED8', // azul
   '#7C3AED', // violeta
   '#DB2777', // rosa
@@ -76,6 +83,7 @@ export const PALETA_LOTE = [
   '#B91C1C', // rojo
   '#57534E', // piedra
   '#A16207', // oliva
+  '#8B5E34', // marrón (marca)
 ] as const
 
 /** Color para lotes históricos sin color asignado. */
@@ -83,4 +91,38 @@ export const COLOR_LOTE_FALLBACK = '#57534E'
 
 export function getLoteColor(color: string | null | undefined): string {
   return color ?? COLOR_LOTE_FALLBACK
+}
+
+/**
+ * Paleta para las categorías de insumo: arranca con los colores de lote y se
+ * extiende con más matices por si aparecen muchas categorías (habrá pocas).
+ */
+export const PALETA_CATEGORIA_INSUMO: string[] = [
+  ...PALETA_LOTE,
+  '#0284C7', // celeste
+  '#0891B2', // cian
+  '#65A30D', // lima
+  '#059669', // esmeralda
+  '#EA580C', // naranja
+  '#C026D3', // fucsia
+  '#E11D48', // rosa fuerte
+  '#4F46E5', // índigo
+  '#CA8A04', // amarillo
+  '#64748B', // pizarra
+]
+
+/**
+ * Color estable de una categoría de insumo según su posición (alfabética) en
+ * el listado (igual que `colorCategoria` en gabino-agrogestion). Si no está,
+ * gris neutro.
+ */
+export function colorCategoriaInsumo(
+  idCategoria: number | null | undefined,
+  categorias: { id: number; nombre: string }[],
+): string {
+  if (idCategoria == null) return COLOR_LOTE_FALLBACK
+  const ordenadas = [...categorias].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
+  const idx = ordenadas.findIndex((c) => c.id === idCategoria)
+  if (idx < 0) return COLOR_LOTE_FALLBACK
+  return PALETA_CATEGORIA_INSUMO[idx % PALETA_CATEGORIA_INSUMO.length]
 }

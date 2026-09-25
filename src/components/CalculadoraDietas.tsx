@@ -1,13 +1,13 @@
 import { useMemo, useState } from 'react'
 import { Calculator } from 'lucide-react'
-import { fmtKg, kgIngrediente, type DietaView } from '../lib/dietas'
+import { fmtKg, kgInsumo, type DietaView } from '../lib/dietas'
 
 const inputCls =
   'px-3 py-2 bg-background border border-border rounded-md text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-primary transition-colors'
 
 /**
  * Calculadora de raciones: elige una dieta vigente y una cantidad a preparar
- * (default 2500 kg) y desglosa los kg de cada ingrediente según el %.
+ * (default 2500 kg) y desglosa los kg de cada insumo según el %.
  */
 export function CalculadoraDietas({ dietas }: { dietas: DietaView[] }) {
   const [idDieta, setIdDieta] = useState<string | number>('')
@@ -60,25 +60,25 @@ export function CalculadoraDietas({ dietas }: { dietas: DietaView[] }) {
 
       {!dieta ? (
         <p className="text-xs text-muted-foreground">
-          Elegí una dieta para ver el desglose de ingredientes.
+          Elegí una dieta para ver el desglose de insumos.
         </p>
       ) : !cantidadOk ? (
         <p className="text-xs text-muted-foreground">Ingresá una cantidad válida.</p>
       ) : (
         <div className="border border-border rounded-lg overflow-hidden">
           <div className="px-3 py-2 bg-muted/60 text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center justify-between">
-            <span>Ingrediente</span>
+            <span>Insumo</span>
             <span>Kg</span>
           </div>
           <div className="divide-y divide-border">
-            {dieta.ingredientes.map((ing) => (
-              <div key={ing.idIngrediente} className="flex items-center justify-between px-3 py-2 text-sm">
+            {dieta.insumos.map((ins) => (
+              <div key={ins.idInsumo} className="flex items-center justify-between px-3 py-2 text-sm">
                 <span className="text-foreground">
-                  {ing.nombre}{' '}
-                  <span className="text-xs text-muted-foreground">({ing.porcentaje}%)</span>
+                  {ins.nombre}{' '}
+                  <span className="text-xs text-muted-foreground">({ins.porcentaje}%)</span>
                 </span>
                 <span className="font-medium text-foreground tabular-nums">
-                  {fmtKg(kgIngrediente(n, ing.porcentaje))} kg
+                  {fmtKg(kgInsumo(n, ins.porcentaje))} kg
                 </span>
               </div>
             ))}

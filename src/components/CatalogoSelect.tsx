@@ -10,7 +10,6 @@ export type CatalogoTipo =
   | 'proveedor'
   | 'lugar_origen'
   | 'motivo'
-  | 'ingrediente'
 
 export interface CatalogoItem {
   id: number

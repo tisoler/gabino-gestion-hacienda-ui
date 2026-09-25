@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import { fetcher } from '../lib/api'
 import CatalogoSelect from './CatalogoSelect'
+import { AtajosHora } from './AtajosHora'
 import { ESTADO_ANIMAL_LABELS, TIPOS_MOVIMIENTO } from '../constantes'
 
 export interface EnfermeriaOpcion {
@@ -38,12 +39,32 @@ function FechaHora({
   hora,
   onFecha,
   onHora,
+  apilado = false,
 }: {
   fecha: string
   hora: string
   onFecha: (v: string) => void
   onHora: (v: string) => void
+  /** true = hora en una línea debajo de la fecha (modales de enfermería). */
+  apilado?: boolean
 }) {
+  if (apilado) {
+    return (
+      <div className="space-y-3">
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-foreground">Fecha *</label>
+          <input type="date" value={fecha} onChange={(e) => onFecha(e.target.value)} className={`${inputCls} w-full`} />
+        </div>
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between gap-2">
+            <label className="text-xs font-medium text-foreground">Hora *</label>
+            <AtajosHora value={hora} onChange={onHora} />
+          </div>
+          <input type="time" value={hora} onChange={(e) => onHora(e.target.value)} className={`${inputCls} w-full`} />
+        </div>
+      </div>
+    )
+  }
   return (
     <div className="grid grid-cols-2 gap-3">
       <div className="space-y-1.5">
@@ -51,7 +72,10 @@ function FechaHora({
         <input type="date" value={fecha} onChange={(e) => onFecha(e.target.value)} className={`${inputCls} w-full`} />
       </div>
       <div className="space-y-1.5">
-        <label className="text-xs font-medium text-foreground">Hora *</label>
+        <div className="flex items-center justify-between gap-2">
+          <label className="text-xs font-medium text-foreground">Hora *</label>
+          <AtajosHora value={hora} onChange={onHora} />
+        </div>
         <input type="time" value={hora} onChange={(e) => onHora(e.target.value)} className={`${inputCls} w-full`} />
       </div>
     </div>
@@ -186,7 +210,7 @@ export function EnviarEnfermeriaModal({
         El animal pasará al estado <strong>Enfermo</strong>. Se registra en su
         historial de movimientos.
       </p>
-      <FechaHora fecha={fecha} hora={hora} onFecha={setFecha} onHora={setHora} />
+      <FechaHora fecha={fecha} hora={hora} onFecha={setFecha} onHora={setHora} apilado />
       <CatalogoSelect
         tipo="motivo"
         label="Razón / enfermedad *"
@@ -276,7 +300,7 @@ export function TraerEnfermeriaModal({
       <p className="text-xs text-muted-foreground">
         ¿Cómo sale el animal? Se registra en su historial de movimientos.
       </p>
-      <FechaHora fecha={fecha} hora={hora} onFecha={setFecha} onHora={setHora} />
+      <FechaHora fecha={fecha} hora={hora} onFecha={setFecha} onHora={setHora} apilado />
       <div className="flex gap-2">
         {(['sano', 'muerto'] as const).map((e) => (
           <button

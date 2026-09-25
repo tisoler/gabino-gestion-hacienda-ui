@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Check, Loader2, Pencil, X } from 'lucide-react'
+import { AtajosHora } from './AtajosHora'
 
 const fmtFecha = (f: string): string => {
   if (!f) return '—'
@@ -71,14 +72,16 @@ export function CeldaFechaHora({
 
   if (editando) {
     return (
-      <div
-        className="flex items-center gap-1.5"
-        onClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') void guardar()
-          if (e.key === 'Escape') cerrar()
-        }}
-      >
+      <div className="flex flex-col gap-1.5">
+        <AtajosHora value={vHora} onChange={setVHora} />
+        <div
+          className="flex items-center gap-1.5"
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') void guardar()
+            if (e.key === 'Escape') cerrar()
+          }}
+        >
         <input
           type="date"
           autoFocus
@@ -112,6 +115,7 @@ export function CeldaFechaHora({
         >
           <X className="size-4" strokeWidth={2.5} />
         </button>
+        </div>
       </div>
     )
   }

@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Loader2, X } from 'lucide-react'
 import api from '../lib/api'
 import SelectAutocomplete from './SelectAutocomplete'
+import { AtajosHora } from './AtajosHora'
 import {
   SeleccionAnimalesPesos,
   type DatosSeleccionPesos,
@@ -198,11 +199,16 @@ export function SalidaModal({
 
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-foreground">Fecha de la salida *</label>
+            <div className="flex items-center min-h-7">
+              <label className="text-xs font-medium text-foreground">Fecha de la salida *</label>
+            </div>
             <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className={inputCls} />
           </div>
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-foreground">Hora *</label>
+            <div className="flex items-center justify-between gap-2 min-h-7">
+              <label className="text-xs font-medium text-foreground">Hora *</label>
+              <AtajosHora value={hora} onChange={setHora} />
+            </div>
             <input type="time" value={hora} onChange={(e) => setHora(e.target.value)} className={inputCls} />
           </div>
         </div>

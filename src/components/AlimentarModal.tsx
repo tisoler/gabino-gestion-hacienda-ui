@@ -3,6 +3,7 @@ import useSWR from 'swr'
 import { Loader2, Plus, RefreshCw, X } from 'lucide-react'
 import api, { fetcher } from '../lib/api'
 import SelectAutocomplete from './SelectAutocomplete'
+import { AtajosHora } from './AtajosHora'
 import type { CorralOpcion, DietaOpcion, EstadoCorralLote } from '../lib/alimentacion'
 
 const inputCls =
@@ -300,50 +301,65 @@ export function AlimentarModal({
                   </button>
                 )}
               </div>
-              <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto_auto]">
-                <SelectAutocomplete
-                  label="Dieta *"
-                  placeholder="Elegir dieta..."
-                  value={f.idDieta}
-                  onChange={(v) => setFila(f.key, { idDieta: v })}
-                  options={dietasOpciones.map((d) => ({ value: d.id, label: `${d.nombre} (v${d.version})` }))}
-                  clearable={false}
-                />
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-foreground">Fecha *</label>
-                  <input
-                    type="date"
-                    value={f.fecha}
-                    onChange={(e) => {
-                      setFila(f.key, { fecha: e.target.value })
-                      if (idCorral !== '') void recalc(f.key, Number(idCorral), e.target.value, f.hora)
-                    }}
-                    className={`${inputCls} w-full`}
+              <div className="space-y-3">
+                <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+                  <SelectAutocomplete
+                    label="Dieta *"
+                    placeholder="Elegir dieta..."
+                    value={f.idDieta}
+                    onChange={(v) => setFila(f.key, { idDieta: v })}
+                    options={dietasOpciones.map((d) => ({ value: d.id, label: `${d.nombre} (v${d.version})` }))}
+                    clearable={false}
                   />
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-foreground">Cantidad (kg) *</label>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={f.cantidad}
+                      onChange={(e) => setFila(f.key, { cantidad: e.target.value })}
+                      className={`${inputCls} w-full`}
+                      placeholder="Ej: 2500"
+                    />
+                  </div>
                 </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-foreground">Hora *</label>
-                  <input
-                    type="time"
-                    value={f.hora}
-                    onChange={(e) => {
-                      setFila(f.key, { hora: e.target.value })
-                      if (idCorral !== '') void recalc(f.key, Number(idCorral), f.fecha, e.target.value)
-                    }}
-                    className={`${inputCls} w-full`}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-foreground">Cantidad (kg) *</label>
-                  <input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    value={f.cantidad}
-                    onChange={(e) => setFila(f.key, { cantidad: e.target.value })}
-                    className={`${inputCls} w-full`}
-                    placeholder="Ej: 2500"
-                  />
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <div className="flex items-center min-h-7">
+                      <label className="text-xs font-medium text-foreground">Fecha *</label>
+                    </div>
+                    <input
+                      type="date"
+                      value={f.fecha}
+                      onChange={(e) => {
+                        setFila(f.key, { fecha: e.target.value })
+                        if (idCorral !== '') void recalc(f.key, Number(idCorral), e.target.value, f.hora)
+                      }}
+                      className={`${inputCls} w-full`}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between gap-2 min-h-7">
+                      <label className="text-xs font-medium text-foreground">Hora *</label>
+                      <AtajosHora
+                        value={f.hora}
+                        onChange={(v) => {
+                          setFila(f.key, { hora: v })
+                          if (idCorral !== '') void recalc(f.key, Number(idCorral), f.fecha, v)
+                        }}
+                      />
+                    </div>
+                    <input
+                      type="time"
+                      value={f.hora}
+                      onChange={(e) => {
+                        setFila(f.key, { hora: e.target.value })
+                        if (idCorral !== '') void recalc(f.key, Number(idCorral), f.fecha, e.target.value)
+                      }}
+                      className={`${inputCls} w-full`}
+                    />
+                  </div>
                 </div>
               </div>
 

@@ -44,8 +44,9 @@ El lint del UI usa `eslint.config.js` (sin autofix en el script). No `any` nuevo
    `EnviarEnfermeriaModal` → razón/enfermedad obligatoria (catálogo `motivo`) y picker si hay
    varias enfermerías; traer abre `TraerEnfermeriaModal` → estado 'sano'|'muerto' (+ causa si
    es muerto). Pasar estado a enfermo/muerto desde la grilla abre `CambioEstadoModal`
-   (`AnimalModals.tsx`). Cada modal de movimiento pide **fecha + hora** (default ahora,
-   editables → permiten registrar en el pasado). El server registra todo en `animal_movimiento`
+    (`AnimalModals.tsx`). Cada modal de movimiento pide **fecha + hora** (default ahora,
+    editables → permiten registrar en el pasado; `AtajosHora` con 8/9 AM y 3/5/8 PM arriba del
+    control, también en `SalidaModal`, `AlimentarModal` y `CeldaFechaHora`). El server registra todo en `animal_movimiento`
    (con `fecha`+`hora` de negocio); el historial se ve en `MovimientosModal` (click en la ficha
    del mapa o botón de reloj junto al estado).
 7. **Catálogos** (`CatalogoSelect.tsx`): raza/categoria/pelaje/proveedor/lugar_origen/motivo

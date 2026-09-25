@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import useSWR from 'swr'
-import { AlertCircle, Loader2, Pencil, Utensils } from 'lucide-react'
-import { fetcher } from '../lib/api'
+import { AlertCircle, Loader2, Lock, Pencil, Trash2, Utensils } from 'lucide-react'
+import api, { fetcher } from '../lib/api'
 import { useAuth } from '../contexts/auth-context'
 import SelectAutocomplete from '../components/SelectAutocomplete'
 import { Table } from '../components/Table'
@@ -48,6 +48,8 @@ export default function Alimentacion() {
   const set = (patch: Partial<Filtros>) => setFiltros((f) => ({ ...f, ...patch }))
 
   const [editando, setEditando] = useState<AlimentacionView | null>(null)
+  const [eliminandoId, setEliminandoId] = useState<number | null>(null)
+  const [error, setError] = useState('')
 
   // Fila "toca" un filtro si alguno de sus lotes lo cumple.
   const coincide = (a: AlimentacionView, f: Filtros, ignorar?: keyof Filtros) => {
@@ -91,6 +93,22 @@ export default function Alimentacion() {
   }, [all, filtros])
 
   const tieneFiltros = !!(filtros.cliente || filtros.corral || filtros.lote || filtros.desde || filtros.hasta)
+
+  const handleEliminar = async (a: AlimentacionView) => {
+    if (a.liquidada) return
+    if (!window.confirm(`¿Eliminar la alimentación del ${fmtFecha(a.fecha)} (${a.corral.nombre})?`)) return
+    setEliminandoId(a.id)
+    setError('')
+    try {
+      await api.delete(`/alimentaciones/${a.id}`)
+      await mutateAlimentaciones()
+    } catch (err) {
+      console.error(err)
+      setError(extractMsg(err, 'No se pudo eliminar la alimentación.'))
+    } finally {
+      setEliminandoId(null)
+    }
+  }
 
   if (!puedeVer) {
     return (
@@ -170,6 +188,12 @@ export default function Alimentacion() {
       </section>
 
       {/* Listado */}
+      {error && (
+        <div role="alert" className="p-3 bg-destructive-soft border border-destructive/20 text-destructive text-sm rounded-md flex items-center gap-2.5">
+          <AlertCircle className="size-4 shrink-0" strokeWidth={2} />
+          <span>{error}</span>
+        </div>
+      )}
       {isLoading ? (
         <div className="flex items-center justify-center p-20">
           <Loader2 className="size-8 text-primary animate-spin" strokeWidth={1.75} />
@@ -195,7 +219,7 @@ export default function Alimentacion() {
                       <p className="text-sm font-semibold text-foreground">
                         {a.corral.nombre} · {a.dieta.nombre} (v{a.dieta.version})
                       </p>
-<p className="text-xs text-muted-foreground flex flex-wrap items-center gap-x-1">
+                      <p className="text-xs text-muted-foreground flex flex-wrap items-center gap-x-1">
                         <span className="whitespace-nowrap">
                           {fmtFecha(a.fecha)} · {hhmm(a.hora)}
                         </span>
@@ -204,14 +228,30 @@ export default function Alimentacion() {
                           <span>+ {a.nAnimalesEnfermeria} en enfermería ·</span>
                         )}
                         <span>{fmtKg(a.cantidadPorAnimal)} kg/animal</span>
+                        {a.liquidada && (
+                          <span className="inline-flex text-[9px] font-semibold uppercase tracking-wide text-success bg-success-soft rounded-full px-1.5 py-0.5">
+                            Liquidada
+                          </span>
+                        )}
                       </p>
                       {puedeEditar && (
-                        <button
-                          onClick={() => setEditando(a)}
-                          className="mt-1 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border border-border hover:bg-accent transition-colors cursor-pointer"
-                        >
-                          <Pencil className="size-3.5" strokeWidth={2} /> Editar
-                        </button>
+                        <div className="mt-1 flex items-center gap-1.5">
+                          <button
+                            onClick={() => setEditando(a)}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border border-border hover:bg-accent transition-colors cursor-pointer"
+                          >
+                            <Pencil className="size-3.5" strokeWidth={2} /> Editar
+                          </button>
+                          {!a.liquidada && (
+                            <button
+                              onClick={() => void handleEliminar(a)}
+                              disabled={eliminandoId === a.id}
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border border-border text-muted-foreground hover:bg-destructive-soft hover:text-destructive transition-colors disabled:opacity-50 cursor-pointer"
+                            >
+                              <Trash2 className="size-3.5" strokeWidth={2} /> Eliminar
+                            </button>
+                          )}
+                        </div>
                       )}
                     </div>
                   </div>
@@ -220,35 +260,35 @@ export default function Alimentacion() {
                   )}
                 </div>
                 <div className="grid gap-1.5 sm:grid-cols-2">
-{a.lotes.map((l) => (
-                  <div
-                    key={l.loteId}
-                    className="flex items-center justify-between gap-2 text-sm border border-border rounded-md px-2.5 py-1.5"
-                  >
-                    <span className="text-foreground truncate">
-                      {l.loteNombre}
-                      {l.clienteNombre && (
-                        <span className="text-xs text-muted-foreground"> · {l.clienteNombre}</span>
-                      )}
-                    </span>
-                    <span className="text-muted-foreground tabular-nums shrink-0">
-                      {fmtKg(l.cantidadKg)} kg <span className="text-xs">({l.nAnimales} an.)</span>
-                      {l.nAnimalesEnfermeria > 0 && (
-                        <span className="text-xs text-primary">
-                          {' '}
-                          + {fmtKg(l.cantidadEnfermeriaKg)} kg enf. ({l.nAnimalesEnfermeria} an.)
-                        </span>
-                      )}
-                    </span>
-                  </div>
-                ))}
-                {a.nAnimalesEnfermeria > 0 && (
-                  <p className="text-xs text-muted-foreground">
-                    Enfermería: {fmtKg(a.cantidadEnfermeriaKg)} kg extra ({a.nAnimalesEnfermeria}{' '}
-                    animales) a {fmtKg(a.cantidadPorAnimal)} kg/an. — se suma al total, no se
-                    reparte del corral.
-                  </p>
-                )}
+                  {a.lotes.map((l) => (
+                    <div
+                      key={l.loteId}
+                      className="flex items-center justify-between gap-2 text-sm border border-border rounded-md px-2.5 py-1.5"
+                    >
+                      <span className="text-foreground truncate">
+                        {l.loteNombre}
+                        {l.clienteNombre && (
+                          <span className="text-xs text-muted-foreground"> · {l.clienteNombre}</span>
+                        )}
+                      </span>
+                      <span className="text-muted-foreground tabular-nums shrink-0">
+                        {fmtKg(l.cantidadKg)} kg <span className="text-xs">({l.nAnimales} an.)</span>
+                        {l.nAnimalesEnfermeria > 0 && (
+                          <span className="text-xs text-primary">
+                            {' '}
+                            + {fmtKg(l.cantidadEnfermeriaKg)} kg enf. ({l.nAnimalesEnfermeria} an.)
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                  ))}
+                  {a.nAnimalesEnfermeria > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      Enfermería: {fmtKg(a.cantidadEnfermeriaKg)} kg extra ({a.nAnimalesEnfermeria}{' '}
+                      animales) a {fmtKg(a.cantidadPorAnimal)} kg/an. — se suma al total, no se
+                      reparte del corral.
+                    </p>
+                  )}
                 </div>
               </div>
             ))}
@@ -331,29 +371,61 @@ export default function Alimentacion() {
                 },
                 ...(isSysAdmin
                   ? [
-                      {
-                        header: 'Empresa',
-                        accessor: (a: AlimentacionView) => (
-                          <span className="text-muted-foreground">{a.empresa?.nombre ?? '—'}</span>
-                        ),
-                      },
-                    ]
+                    {
+                      header: 'Empresa',
+                      accessor: (a: AlimentacionView) => (
+                        <span className="text-muted-foreground">{a.empresa?.nombre ?? '—'}</span>
+                      ),
+                    },
+                  ]
                   : []),
                 ...(puedeEditar
                   ? [
-                      {
-                        header: 'Acciones',
-                        accessor: (a: AlimentacionView) => (
+                    {
+                      header: 'Estado',
+                      accessor: (a: AlimentacionView) => (
+                        <span
+                          className={`inline-flex text-[10px] font-semibold uppercase tracking-wide rounded-full px-2 py-0.5 ${a.liquidada
+                            ? 'text-success bg-success-soft'
+                            : 'text-muted-foreground bg-muted'
+                            }`}
+                        >
+                          {a.liquidada ? 'Liquidada' : 'Pendiente'}
+                        </span>
+                      ),
+                    },
+                    {
+                      header: 'Acciones',
+                      accessor: (a: AlimentacionView) => (
+                        <div className="flex items-center gap-1.5">
                           <button
                             onClick={() => setEditando(a)}
                             title="Editar alimentación"
                             className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium border border-border hover:bg-accent transition-colors cursor-pointer"
                           >
-                            <Pencil className="size-3.5" strokeWidth={2} /> Editar
+                            <Pencil className="size-3.5" strokeWidth={2} />
                           </button>
-                        ),
-                      },
-                    ]
+                          {a.liquidada ? (
+                            <span
+                              className="p-2 rounded-md bg-muted text-muted-foreground inline-flex"
+                              title="Liquidada: no se puede eliminar"
+                            >
+                              <Lock className="size-4" strokeWidth={1.75} />
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => void handleEliminar(a)}
+                              disabled={eliminandoId === a.id}
+                              title="Eliminar alimentación"
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium border border-border hover:bg-accent transition-colors cursor-pointer"
+                            >
+                              <Trash2 className="size-4" strokeWidth={1.75} />
+                            </button>
+                          )}
+                        </div>
+                      ),
+                    },
+                  ]
                   : []),
               ]}
             />
@@ -381,4 +453,8 @@ export default function Alimentacion() {
       )}
     </div>
   )
+}
+
+function extractMsg(err: unknown, fallback: string): string {
+  return (err as { response?: { data?: { message?: string } } })?.response?.data?.message || fallback
 }

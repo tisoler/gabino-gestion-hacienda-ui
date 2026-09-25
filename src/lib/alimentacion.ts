@@ -16,6 +16,8 @@ export interface AlimentacionView {
   fecha: string
   /** Hora 'HH:MM:SS' (default 12:00). Junto a fecha forma el instante T. */
   hora: string
+  /** Si el evento ya fue liquidado (no se puede eliminar). */
+  liquidada: boolean
   /** Total (corral + enfermería). */
   cantidadKg: number
   /** Lo ingresado para el corral. */

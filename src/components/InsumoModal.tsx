@@ -201,7 +201,7 @@ export function InsumoModal({
             value={nombre}
             onChange={(e) => setNombre(e.target.value)}
             className={inputCls}
-            placeholder="Ej: Urea 46%"
+            placeholder="Ej: Maíz"
           />
         </div>
 

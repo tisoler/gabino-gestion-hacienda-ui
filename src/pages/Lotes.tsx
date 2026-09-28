@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import useSWR, { useSWRConfig } from 'swr'
 import { useNavigate } from 'react-router-dom'
-import { Plus, ArrowRight, Loader2, Utensils } from 'lucide-react'
+import { Plus, Loader2, Stethoscope, Utensils } from 'lucide-react'
 import { fetcher } from '../lib/api'
 import { useAuth } from '../contexts/auth-context'
 import { Table } from '../components/Table'
 import { CorralMapa } from '../components/CorralMapa'
 import { AlimentarModal } from '../components/AlimentarModal'
+import { TratamientoLoteModal } from '../components/TratamientoLoteModal'
 
 export interface LoteResumen {
   id: number
@@ -37,11 +38,13 @@ export default function Lotes() {
   // El cliente (sin escritura:lote) sólo puede VER; no crea ni entra a editar.
   const puedeEscribir = permisos.includes('escritura:lote')
   const puedeAlimentar = permisos.includes('escritura:alimento')
+  const puedeTratar = permisos.includes('escritura:veterinaria')
   // Los que pueden mover arrastrando pueden colapsar el panel de corrales a
   // 1 columna para darle más ancho a la tabla de lotes. Por defecto expandido.
   const [corralesColapsado, setCorralesColapsado] = useState(false)
   const [alimentarOpen, setAlimentarOpen] = useState(false)
   const [alimentarCorralId, setAlimentarCorralId] = useState<number | undefined>(undefined)
+  const [tratarLote, setTratarLote] = useState<LoteResumen | null>(null)
   const panelColapsado = !puedeEscribir || corralesColapsado
 
   const { data: lotes, isLoading } = useSWR<LoteResumen[]>('/lotes', fetcher, {
@@ -95,6 +98,7 @@ export default function Lotes() {
             <Table<LoteResumen>
               data={lotes || []}
               emptyMessage="No hay lotes cargados todavía."
+              onRowClick={(l) => navigate(`/lotes/${l.id}`)}
               columns={[
                 {
                   header: 'Lote',
@@ -119,25 +123,25 @@ export default function Lotes() {
                 // cliente (simétrico a ocultarle la columna "Cliente").
                 ...(isCliente
                   ? [
-                      {
-                        header: 'Empresa',
-                        accessor: (l: LoteResumen) => (
-                          <span className="text-muted-foreground">{l.nombreEmpresa || '—'}</span>
-                        ),
-                      },
-                    ]
+                    {
+                      header: 'Empresa',
+                      accessor: (l: LoteResumen) => (
+                        <span className="text-muted-foreground">{l.nombreEmpresa || '—'}</span>
+                      ),
+                    },
+                  ]
                   : []),
                 { header: 'Fecha', accessor: (l) => <span className="text-muted-foreground">{fmtFecha(l.fecha)}</span> },
                 // El cliente sólo ve sus lotes: la columna "Cliente" es él mismo.
                 ...(!isCliente
                   ? [
-                      {
-                        header: 'Cliente',
-                        accessor: (l: LoteResumen) => (
-                          <span className="text-muted-foreground">{l.nombreCliente || '—'}</span>
-                        ),
-                      },
-                    ]
+                    {
+                      header: 'Cliente',
+                      accessor: (l: LoteResumen) => (
+                        <span className="text-muted-foreground">{l.nombreCliente || '—'}</span>
+                      ),
+                    },
+                  ]
                   : []),
                 {
                   header: 'Corral',
@@ -161,13 +165,16 @@ export default function Lotes() {
                 {
                   header: '',
                   accessor: (l) => (
-                    <div className="flex items-center justify-end">
-                      <button
-                        onClick={() => navigate(`/lotes/${l.id}`)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium text-primary bg-primary-soft hover:bg-primary hover:text-primary-foreground transition-colors cursor-pointer"
-                      >
-                        {puedeEscribir ? 'Ver / Editar' : 'Ver'} <ArrowRight className="size-3.5" strokeWidth={2} />
-                      </button>
+                    <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
+                      {puedeTratar && (
+                        <button
+                          onClick={() => setTratarLote(l)}
+                          title="Aplicar tratamiento al lote"
+                          className="inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium border border-border hover:bg-primary-soft hover:text-primary transition-colors cursor-pointer"
+                        >
+                          Tratar <Stethoscope className="size-4" strokeWidth={1.75} />
+                        </button>
+                      )}
                     </div>
                   ),
                 },
@@ -198,6 +205,17 @@ export default function Lotes() {
           onSaved={async () => {
             await mutate('/corrales/mapa')
             await mutate('/alimentaciones')
+          }}
+        />
+      )}
+
+      {tratarLote && (
+        <TratamientoLoteModal
+          loteId={tratarLote.id}
+          loteNombre={tratarLote.nombre}
+          onClose={() => setTratarLote(null)}
+          onGuardado={async () => {
+            await mutate('/lotes')
           }}
         />
       )}

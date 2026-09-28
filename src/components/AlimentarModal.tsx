@@ -25,7 +25,6 @@ interface Fila {
   /** Conteos reconstruidos (o ajustados) por lote, para enviar como override. */
   ajuste: EstadoCorralLote[] | null
   ajusteCargando: boolean
-  ajusteEditado: boolean
 }
 
 let proxKey = 1
@@ -37,7 +36,6 @@ const nuevaFila = (prev?: Fila): Fila => ({
   cantidad: '',
   ajuste: null,
   ajusteCargando: false,
-  ajusteEditado: false,
 })
 
 /** Datos de una alimentación existente para editarla en el mismo modal. */
@@ -89,7 +87,6 @@ export function AlimentarModal({
             cantidad: String(modoEdicion.cantidadKg),
             ajuste: null,
             ajusteCargando: false,
-            ajusteEditado: false,
           },
         ]
       : [nuevaFila()],
@@ -126,7 +123,7 @@ export function AlimentarModal({
       setFilas((fs) =>
         fs.map((f) =>
           f.key === key
-            ? { ...f, ajuste: data ?? [], ajusteCargando: false, ajusteEditado: false }
+            ? { ...f, ajuste: data ?? [], ajusteCargando: false }
             : f,
         ),
       )
@@ -155,7 +152,6 @@ export function AlimentarModal({
         if (f.key !== key || !f.ajuste) return f
         return {
           ...f,
-          ajusteEditado: true,
           ajuste: f.ajuste.map((a) =>
             a.loteId === loteId ? { ...a, [campo]: isNaN(n) || n < 0 ? 0 : n } : a,
           ),
@@ -182,7 +178,9 @@ export function AlimentarModal({
           cantidadKg: parseFloat(f.cantidad.replace(',', '.')),
           fecha: f.fecha,
           hora: f.hora,
-          ...(f.ajusteEditado && f.ajuste
+          // Siempre los conteos exhibidos (precargados o editados): lo
+          // mostrado = lo guardado. Sin ajuste, el server reconstruye.
+          ...(f.ajuste
             ? {
                 ajuste: f.ajuste.map((a) => ({
                   loteId: a.loteId,
@@ -200,8 +198,8 @@ export function AlimentarModal({
             cantidadKg: parseFloat(f.cantidad.replace(',', '.')),
             fecha: f.fecha,
             hora: f.hora,
-            // Sólo si el usuario ajustó los conteos se manda el override.
-            ...(f.ajusteEditado && f.ajuste
+            // Siempre los conteos exhibidos (precargados o editados).
+            ...(f.ajuste
               ? {
                   ajuste: f.ajuste.map((a) => ({
                     loteId: a.loteId,

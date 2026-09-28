@@ -84,6 +84,7 @@ export function CorralMapa({
   // filtra a los lotes/animales del usuario; enfermería se muestra siempre).
   const canVer = permisos.includes('lectura:lote')
   const canMover = permisos.includes('escritura:lote')
+  const puedeTratar = permisos.includes('escritura:veterinaria')
 
   const { data: corrales, isLoading } = useSWR<CorralMapaItem[]>(
     canVer ? '/corrales/mapa' : null,
@@ -433,14 +434,16 @@ export function CorralMapa({
         <EnviarEnfermeriaModal
           animalLabel={labelDe(pendiente.item)}
           enfermerias={[{ id: pendiente.destino.id, nombre: pendiente.destino.nombre }]}
+          puedeTratar={puedeTratar}
           onClose={() => setPendiente(null)}
-          onOk={async (motivoId, _idCorral, fecha, hora) => {
+          onOk={async (motivoId, _idCorral, fecha, hora, tratamientos) => {
             await confirmar((base) =>
               api.post(base, {
                 idCorral: pendiente.destino.id,
                 idMotivo: motivoId,
                 fecha,
                 hora,
+                ...(tratamientos.length > 0 ? { tratamientos } : {}),
               }),
             )
           }}
@@ -450,8 +453,11 @@ export function CorralMapa({
       {pendiente?.tipo === 'de_enfermeria' && (
         <TraerEnfermeriaModal
           animalLabel={labelDe(pendiente.item)}
+          loteId={pendiente.item.loteId}
+          animalId={pendiente.item.animalId}
+          puedeTratar={puedeTratar}
           onClose={() => setPendiente(null)}
-          onOk={async (estado, motivoId, fecha, hora) => {
+          onOk={async (estado, motivoId, fecha, hora, tratamientos) => {
             await confirmar((base) =>
               api.delete(base, {
                 data: {
@@ -459,6 +465,7 @@ export function CorralMapa({
                   ...(motivoId ? { idMotivo: motivoId } : {}),
                   fecha,
                   hora,
+                  ...(tratamientos.length > 0 ? { tratamientos } : {}),
                 },
               }),
             )
@@ -474,7 +481,9 @@ export function CorralMapa({
             nAnimal: movAnimal.nAnimal,
             loteNombre: movAnimal.loteNombre,
             caravana: movAnimal.caravana,
+            estado: movAnimal.estado,
           }}
+          puedeTratar={puedeTratar}
           onClose={() => setMovAnimal(null)}
         />
       )}

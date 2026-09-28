@@ -12,6 +12,8 @@ import {
   Utensils,
   Truck,
   Package,
+  Stethoscope,
+  Calculator,
   UserCog,
   LayoutDashboard,
   LogOut,
@@ -67,6 +69,7 @@ const NAV_GROUPS: NavItem[][] = [
     { to: '/lotes', label: 'Lotes', icon: MapPin, permission: 'lectura:lote' },
     { to: '/alimentacion', label: 'Alimentación', icon: Utensils, permission: 'lectura:alimento' },
     { to: '/salidas', label: 'Salidas', icon: Truck, permission: 'lectura:salida' },
+    { to: '/balances', label: 'Balances', icon: Calculator, permission: 'lectura:balance-lote' },
   ],
   [
     {
@@ -80,6 +83,7 @@ const NAV_GROUPS: NavItem[][] = [
     },
     { to: '/corrales', label: 'Corrales', icon: Fence, permission: 'lectura:corral', ocultarParaCliente: true },
     { to: '/insumos', label: 'Insumos', icon: Package, permission: 'lectura:insumo' },
+    { to: '/tratamientos', label: 'Tratamientos', icon: Stethoscope, permission: 'lectura:veterinaria' },
     { to: '/dietas', label: 'Dietas', icon: Wheat, permission: 'lectura:dieta' },
   ],
   [

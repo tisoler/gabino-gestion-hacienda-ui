@@ -47,8 +47,14 @@ El lint del UI usa `eslint.config.js` (sin autofix en el script). No `any` nuevo
     (`AnimalModals.tsx`). Cada modal de movimiento pide **fecha + hora** (default ahora,
     editables → permiten registrar en el pasado; `AtajosHora` con 8/9 AM y 3/5/8 PM arriba del
     control, también en `SalidaModal`, `AlimentarModal` y `CeldaFechaHora`). El server registra todo en `animal_movimiento`
-   (con `fecha`+`hora` de negocio); el historial se ve en `MovimientosModal` (click en la ficha
-   del mapa o botón de reloj junto al estado).
+    (con `fecha`+`hora` de negocio); el historial se ve en `MovimientosModal` (click en la ficha
+    del mapa o botón de reloj junto al estado): timeline combinado movimientos + tratamientos
+    (sin insumos), con botón + para directos. Con `escritura:veterinaria`, los modales de
+    enfermería agregan la sección opcional de tratamientos (`TratamientosEditor`: N
+    tratamientos × M insumos con precio editable default referencia; crear uno nuevo abre el
+    modal (`TratamientoModal` / `InsumoModal` con categoría Veterinaria fija) que recolecta
+    todos los campos y el server lo persiste al guardar, sin pedir escritura:insumo; al traer
+    se precargan los del envío).
 7. **Catálogos** (`CatalogoSelect.tsx`): raza/categoria/pelaje/proveedor/lugar_origen/motivo
    como autocomplete con alta inline (`/catalogos/:tipo` lee globales+empresa; POST asocia a la
    empresa con `escritura:lote`). `SelectAutocomplete` soporta `allowCreate` + `onCreate`
@@ -181,9 +187,10 @@ El lint del UI usa `eslint.config.js` (sin autofix en el script). No `any` nuevo
   server **reconstruye los animales del corral al instante fecha+hora de cada fila** (la cantidad
   es la del CORRAL; enfermería suma una estimación extra a la misma tasa — ver DESIGN del server).
   Cada fila muestra, debajo, los **conteos reconstruidos por lote (común / enfermería)
-  editables** (precargados vía `GET /alimentaciones/estado-corral`, con botón "Recalcular"); si
-  el usuario los ajusta se envían como `ajuste` y **reemplazan** la reconstrucción. Sólo se manda
-  `ajuste` si se editó (si no, el server reconstruye al instante).
+  editables** (precargados vía `GET /alimentaciones/estado-corral`, con botón "Recalcular");
+  los conteos exhibidos se mandan **siempre** como `ajuste` (editados o no: lo mostrado =
+  lo guardado). Sin `ajuste` (p. ej. recalc sin correr), el server reconstruye al instante
+  como fallback.
   El
   histórico muestra el desglose corral/enfermería (kg y nº de animales) por evento y por lote.
   El botón "Alimentar" está en `/lotes` (junto a "Nuevo lote", sin corral) y en cada card de
@@ -221,7 +228,10 @@ clientes + operarios con tabs) · `/lotes` (listado + mapa de corrales a la dere
 además ve "Mis lotes", sin columna Cliente y con el panel de corrales más angosto) ·
 `/lotes/nueva|:id` (detalle: corral/color/proveedor/lugar de origen + titular (cliente o
 anfitrión) + tabla de animales con raza/categoría, toggle de estado Sano/Enfermo/Muerto, enfermería
-y botón de historial de movimientos; el cliente lo ve en modo SÓLO LECTURA) ·
+y botón de historial de movimientos; sección Pesajes colapsada por defecto + sección
+Balance económico colapsada (`components/BalanceLote.tsx`: costos de alimentaciones y
+tratamientos con totales, masivos al lote en un registro con popover de caravanas;
+`lectura:balance-lote`); el cliente lo ve en modo SÓLO LECTURA) ·
 `/corrales` (alta/edición/deshabilitar; con `lectura:corral`, **oculta al cliente** vía
 `ocultarParaCliente` en el Sidebar) · `/animales/razas` y `/animales/categorias` (sys-admin,
 submenú "Animales" en el Sidebar) · `/dietas` (módulo de alimentación: lista de dietas +
@@ -230,12 +240,17 @@ activa/desactiva) · `/alimentacion` (histórico de alimentaciones con filtros e
 cliente/corral/lote/rango de fechas; `lectura:alimento` ve, `escritura:alimento` registra
 desde `/lotes` o el mapa de corrales) · `/salidas` (histórico de salidas con filtros por
 cliente/corral/lote/partida/fechas y la diferencia de peso del grupo; `lectura:salida` ve,
-`escritura:salida` registra desde la sección Pesajes del lote) · `/insumos` (catálogo de
+`escritura:salida` registra desde la sección Pesajes del lote) · `/balances` (resumen de
+costos por lote agrupado por cliente, con totales; `lectura:balance-lote`) · `/insumos` (catálogo de
 insumos con precio de referencia, filtro de alcance Todas/Global/Por empresa y modal de
 alta/edición estilo Corrales (`components/InsumoModal.tsx`, reutilizado por el alta
 on-the-fly en dietas con `nombreInicial`/`categoriaFija`/`alcanceFijo`); `lectura:insumo`
 ve activos, `escritura:insumo` gestiona; las categorías se crean inline desde el modal
-con `SelectAutocomplete` + alta local) · `/usuarios` (sys-admin, asignar roles) ·
+con `SelectAutocomplete` + alta local) · `/tratamientos` (catálogo veterinario con precio
+de referencia, filtro de alcance y modal estilo Corrales; `lectura:veterinaria` ve activos,
+`escritura:veterinaria` gestiona y aplica tratamientos: sección opcional en los modales de
+enfermería, botón + en el historial para directos, y botón en `/lotes` + `/lotes/:id` para
+masivos al lote) · `/usuarios` (sys-admin, asignar roles) ·
 `/configuracion` (sys-admin, limpiar caché)
 
 **Cliente**: el **mapa de Lotes** (`/corrales/mapa`) usa `lectura:lote` y el server lo filtra a

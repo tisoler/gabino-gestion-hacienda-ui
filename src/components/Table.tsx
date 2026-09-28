@@ -10,9 +10,11 @@ interface TableProps<T> {
   columns: Column<T>[]
   actions?: ReactNode
   emptyMessage?: string
+  /** Fila clickeable (los botones interiores deben detener la propagación). */
+  onRowClick?: (item: T) => void
 }
 
-export function Table<T>({ data, columns, actions, emptyMessage = 'No hay datos disponibles.' }: TableProps<T>) {
+export function Table<T>({ data, columns, actions, emptyMessage = 'No hay datos disponibles.', onRowClick }: TableProps<T>) {
   return (
     <div className="premium-card overflow-hidden">
       {actions && (
@@ -38,7 +40,11 @@ export function Table<T>({ data, columns, actions, emptyMessage = 'No hay datos 
           <tbody>
             {data.length > 0 ? (
               data.map((item, ri) => (
-                <tr key={ri} className="hover:bg-muted/40 transition-colors">
+                <tr
+                  key={ri}
+                  onClick={onRowClick ? () => onRowClick(item) : undefined}
+                  className={`hover:bg-muted/40 transition-colors ${onRowClick ? 'cursor-pointer' : ''}`}
+                >
                   {columns.map((col, ci) => (
                     <td key={ci} className="px-4 py-3 text-sm text-foreground border-b border-border last:border-b-0">
                       {typeof col.accessor === 'function'

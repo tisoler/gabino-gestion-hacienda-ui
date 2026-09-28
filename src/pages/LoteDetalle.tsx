@@ -61,6 +61,9 @@ import {
   TraerEnfermeriaModal,
   type EnfermeriaOpcion,
 } from '../components/AnimalModals'
+import { TratamientoLoteModal } from '../components/TratamientoLoteModal'
+import { BalanceLote } from '../components/BalanceLote'
+import { aTratamientosDto } from '../lib/veterinaria'
 import {
   CORRAL_TIPOS,
   ESTADO_ANIMAL_LABELS,
@@ -173,6 +176,7 @@ export default function LoteDetalle() {
   const puedeVerAlimento = permisos.includes('lectura:alimento')
   const puedeDarSalida = permisos.includes('escritura:salida')
   const puedeVerSalidas = permisos.includes('lectura:salida')
+  const puedeTratar = permisos.includes('escritura:veterinaria')
 
   // El picker de titulares (clientes + anfitrión) requiere lectura:cliente
   // (anfitrión/sys-admin); el operario crea lotes sin dueño.
@@ -202,6 +206,7 @@ export default function LoteDetalle() {
   const [traerModal, setTraerModal] = useState<Animal | null>(null)
   const [estadoModal, setEstadoModal] = useState<{ animal: Animal; estado: string } | null>(null)
   const [movModal, setMovModal] = useState<Animal | null>(null)
+  const [tratarLoteModal, setTratarLoteModal] = useState(false)
   const [inicialModal, setInicialModal] = useState<{ editar: boolean; idPartida: number | null } | null>(null)
   const [intermedioModal, setIntermedioModal] = useState<{ fecha: string | null } | null>(null)
   const [pesajeBusy, setPesajeBusy] = useState(false)
@@ -209,6 +214,7 @@ export default function LoteDetalle() {
   const [editandoFinalFecha, setEditandoFinalFecha] = useState<string | null>(null)
   const [finalEditBusy, setFinalEditBusy] = useState(false)
   const [evolucionAbierta, setEvolucionAbierta] = useState(false)
+  const [pesajesAbiertos, setPesajesAbiertos] = useState(false)
   const [salidaModal, setSalidaModal] = useState(false)
   const [error, setError] = useState('')
 
@@ -573,6 +579,7 @@ export default function LoteDetalle() {
     idCorral: number | undefined,
     fecha: string,
     hora: string,
+    tratamientos: ReturnType<typeof aTratamientosDto> = [],
   ) => {
     if (!lote) return
     try {
@@ -581,10 +588,12 @@ export default function LoteDetalle() {
         fecha,
         hora,
         ...(idCorral ? { idCorral } : {}),
+        ...(tratamientos.length > 0 ? { tratamientos } : {}),
       })
       setEnviarModal(null)
       await mutateLote()
       await mutate('/corrales/mapa')
+      await mutate(`/lotes/${lote.id}/balance`)
     } catch (err) {
       console.error(err)
       setError(extractMsg(err, 'No se pudo enviar a enfermería.'))
@@ -598,15 +607,23 @@ export default function LoteDetalle() {
     motivoId: number | undefined,
     fecha: string,
     hora: string,
+    tratamientos: ReturnType<typeof aTratamientosDto> = [],
   ) => {
     if (!lote) return
     try {
       await api.delete(`/lotes/${lote.id}/animales/${a.id}/enfermeria`, {
-        data: { estado, fecha, hora, ...(motivoId ? { idMotivo: motivoId } : {}) },
+        data: {
+          estado,
+          fecha,
+          hora,
+          ...(motivoId ? { idMotivo: motivoId } : {}),
+          ...(tratamientos.length > 0 ? { tratamientos } : {}),
+        },
       })
       setTraerModal(null)
       await mutateLote()
       await mutate('/corrales/mapa')
+      await mutate(`/lotes/${lote.id}/balance`)
     } catch (err) {
       console.error(err)
       setError(extractMsg(err, 'No se pudo traer de enfermería.'))
@@ -686,8 +703,16 @@ export default function LoteDetalle() {
             readOnly={!puedeEscribir}
             onSubmit={handleGuardarLote}
             headerExtra={
-              (puedeVerSalidas || puedeVerAlimento) ? (
+              (puedeTratar || puedeVerSalidas || puedeVerAlimento) ? (
                 <div className="flex items-center gap-2">
+                  {puedeTratar && (
+                    <button
+                      onClick={() => setTratarLoteModal(true)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium border border-border hover:bg-accent transition-colors cursor-pointer"
+                    >
+                      <Stethoscope className="size-4" strokeWidth={2} /> Tratar lote
+                    </button>
+                  )}
                   {puedeVerAlimento && (
                     <button
                       onClick={() => navigate(`/alimentacion?lote=${lote.id}`)}
@@ -711,20 +736,43 @@ export default function LoteDetalle() {
 
           {/* Pesajes: peso inicial + intermedios + evolución (misma sección) */}
           <section className="bg-card border border-border rounded-lg p-5 space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
+            <div
+              role="button"
+              tabIndex={0}
+              aria-expanded={pesajesAbiertos}
+              title={pesajesAbiertos ? 'Colapsar pesajes' : 'Expandir pesajes'}
+              onClick={() => setPesajesAbiertos((v) => !v)}
+              onKeyDown={(e) => {
+                if ((e.target as HTMLElement).closest('button')) return
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  setPesajesAbiertos((v) => !v)
+                }
+              }}
+              className="flex flex-wrap items-center justify-between gap-3 cursor-pointer rounded-md"
+            >
               <div className="flex items-center gap-3">
                 <div className="size-9 rounded-md bg-primary-soft text-primary flex items-center justify-center shrink-0">
                   <Scale className="size-5" strokeWidth={1.75} />
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-foreground">Pesajes</p>
+                  <p className="text-sm font-semibold text-foreground flex items-center gap-1.5">
+                    Pesajes
+                    <ChevronDown
+                      className={`size-4 text-muted-foreground transition-transform ${pesajesAbiertos ? '' : '-rotate-90'}`}
+                      strokeWidth={2}
+                    />
+                  </p>
                   <p className="text-xs text-muted-foreground">
                     {lote.animales.length} animales
                   </p>
                 </div>
               </div>
               {puedeEscribir && (
-                <div className="grid grid-cols-2 gap-2 [&>button]:justify-center sm:flex sm:flex-wrap sm:items-center sm:justify-end">
+                <div
+                  className="grid grid-cols-2 gap-2 [&>button]:justify-center sm:flex sm:flex-wrap sm:items-center sm:justify-end"
+                  onClick={(e) => e.stopPropagation()}
+                >
                   {animalesSinInicial.length > 0 && (
                     <button
                       onClick={() => setInicialModal({ editar: false, idPartida: null })}
@@ -770,6 +818,8 @@ export default function LoteDetalle() {
               )}
             </div>
 
+            {pesajesAbiertos && (
+            <div className="space-y-4">
             {/* Pesajes: peso inicial (por partida si hay varias) + intermedios (lote) */}
             <div className="border border-border rounded-md divide-y divide-border">
               {partidas.length === 0 ? (
@@ -930,7 +980,11 @@ export default function LoteDetalle() {
                 </div>
               )}
             </div>
+            </div>
+            )}
           </section>
+
+          <BalanceLote loteId={lote.id} />
 
           <section className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1133,19 +1187,23 @@ export default function LoteDetalle() {
         <EnviarEnfermeriaModal
           animalLabel={labelAnimal(enviarModal.animal)}
           enfermerias={enviarModal.enfermerias}
+          puedeTratar={puedeTratar}
           onClose={() => setEnviarModal(null)}
-          onOk={async (motivoId, idCorral, fecha, hora) => {
-            await handleEnfermeria(enviarModal.animal, motivoId, idCorral, fecha, hora)
+          onOk={async (motivoId, idCorral, fecha, hora, tratamientos) => {
+            await handleEnfermeria(enviarModal.animal, motivoId, idCorral, fecha, hora, tratamientos)
           }}
         />
       )}
 
-      {traerModal && (
+      {traerModal && lote && (
         <TraerEnfermeriaModal
           animalLabel={labelAnimal(traerModal)}
+          loteId={lote.id}
+          animalId={traerModal.id}
+          puedeTratar={puedeTratar}
           onClose={() => setTraerModal(null)}
-          onOk={async (estado, motivoId, fecha, hora) => {
-            await handleTraer(traerModal, estado, motivoId, fecha, hora)
+          onOk={async (estado, motivoId, fecha, hora, tratamientos) => {
+            await handleTraer(traerModal, estado, motivoId, fecha, hora, tratamientos)
           }}
         />
       )}
@@ -1165,8 +1223,21 @@ export default function LoteDetalle() {
       {movModal && lote && (
         <MovimientosModal
           loteId={lote.id}
-          animal={{ id: movModal.id, nAnimal: movModal.nAnimal, caravana: movModal.caravana }}
+          animal={{ id: movModal.id, nAnimal: movModal.nAnimal, caravana: movModal.caravana, estado: movModal.estado }}
+          puedeTratar={puedeTratar}
           onClose={() => setMovModal(null)}
+        />
+      )}
+
+      {tratarLoteModal && lote && (
+        <TratamientoLoteModal
+          loteId={lote.id}
+          loteNombre={lote.nombre}
+          onClose={() => setTratarLoteModal(false)}
+          onGuardado={async () => {
+            await mutateLote()
+            await mutate(`/lotes/${lote.id}/balance`)
+          }}
         />
       )}
 

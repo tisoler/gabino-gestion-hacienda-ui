@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import useSWR, { useSWRConfig } from 'swr'
 import { Fence, Loader2, AlertCircle, Stethoscope, ChevronDown, ChevronsRight, ChevronsLeft, Utensils } from 'lucide-react'
@@ -51,6 +51,24 @@ function ordenarFichas(animales: TokenAnimal[]): TokenAnimal[] {
   })
 }
 
+interface GrupoLote {
+  loteId: number
+  loteNombre: string
+  loteColor: string | null
+  animales: TokenAnimal[]
+}
+
+/** Agrupa fichas ya ordenadas por su lote (preserva el orden). */
+function gruposPorLote(fichas: TokenAnimal[]): GrupoLote[] {
+  const grupos: GrupoLote[] = []
+  for (const a of fichas) {
+    const g = grupos[grupos.length - 1]
+    if (g && g.loteId === a.loteId) g.animales.push(a)
+    else grupos.push({ loteId: a.loteId, loteNombre: a.loteNombre, loteColor: a.loteColor, animales: [a] })
+  }
+  return grupos
+}
+
 /**
  * Panel de corrales para la vista de Lotes (permiso lectura:corral).
  * Cada animal es una ficha con el color de su lote y su número:
@@ -98,6 +116,10 @@ export function CorralMapa({
   const dragTokenRef = useRef(0)
   // Cards de corral colapsadas (por id). Por defecto expandidas.
   const [colapsados, setColapsados] = useState<Record<number, boolean>>({})
+  // Fichas grandes por lote (colapsadas por defecto; click = expandir).
+  const [lotesExpandidos, setLotesExpandidos] = useState<Record<string, boolean>>({})
+  const toggleLote = (key: string) =>
+    setLotesExpandidos((s) => ({ ...s, [key]: !s[key] }))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   // El drop NO mueve directo: abre el modal de enfermería (motivo obligatorio)
@@ -110,6 +132,9 @@ export function CorralMapa({
   const [movAnimal, setMovAnimal] = useState<TokenAnimal | null>(null)
   // HTML5 DnD puede disparar click tras soltar: se suprime el modal breve.
   const suppressClickRef = useRef(false)
+  // Ancla del dock "Soltar en": se centra en la sección de corrales.
+  const asideRef = useRef<HTMLElement | null>(null)
+  const [dockX, setDockX] = useState<{ left: number; max: number } | null>(null)
 
   const destinoValido = (item: DragItem, c: CorralMapaItem): boolean => {
     if (c.tipo === CORRAL_TIPOS.ENFERMERIA) {
@@ -124,6 +149,7 @@ export function CorralMapa({
   const clearDrag = () => {
     dragTokenRef.current += 1
     setDrag(null)
+    setDockX(null)
     setOverCorralId(null)
     suppressClickRef.current = true
     setTimeout(() => {
@@ -183,6 +209,21 @@ export function CorralMapa({
    */
   const destinosDock = drag && corrales ? corrales.filter((c) => destinoValido(drag, c)) : []
 
+  // Mientras se arrastra, centra el dock en la sección de corrales.
+  useEffect(() => {
+    if (!drag) return
+    const medir = () => {
+      const r = asideRef.current?.getBoundingClientRect()
+      if (!r) return
+      setDockX({
+        left: r.left + r.width / 2,
+        max: Math.max(280, Math.min(r.width, window.innerWidth - 24)),
+      })
+    }
+    window.addEventListener('resize', medir)
+    return () => window.removeEventListener('resize', medir)
+  }, [drag])
+
   const renderCard = (c: CorralMapaItem): ReactNode => {
     const esValido = drag ? destinoValido(drag, c) : false
     const esSobre = esValido && overCorralId === c.id
@@ -240,15 +281,14 @@ export function CorralMapa({
           <span className="flex items-center gap-1.5 shrink-0">
             {puedeAlimentar &&
               onAlimentar &&
-              c.tipo === CORRAL_TIPOS.COMUN &&
-              c.animales.length > 0 && (
+              c.tipo === CORRAL_TIPOS.COMUN && (
                 <button
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation()
                     onAlimentar(c.id)
                   }}
-                  title="Alimentar este corral"
+                  title="Alimentar este corral (recalcula al instante elegido)"
                   className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium border border-border hover:bg-accent transition-colors cursor-pointer"
                 >
                   <Utensils className="size-3.5" strokeWidth={2} /> Alimentar
@@ -281,8 +321,61 @@ export function CorralMapa({
             {c.tipo === CORRAL_TIPOS.ENFERMERIA ? 'Sin animales en enfermería.' : 'Libre.'}
           </p>
         ) : (
-          <div className="flex flex-wrap gap-1.5 min-h-8">
-            {fichas.map((a) => {
+          <div className="space-y-2 min-h-8">
+            {gruposPorLote(fichas).map((g) => {
+              const clave = `${c.id}:${g.loteId}`
+              const expandido = !!lotesExpandidos[clave]
+              const color = getLoteColor(g.loteColor)
+              if (!expandido) {
+                const algunEnfermo = g.animales.some((a) => a.estado === 'enfermo')
+                return (
+                  <button
+                    key={clave}
+                    type="button"
+                    onClick={() => toggleLote(clave)}
+                    title={`${g.loteNombre} · ${g.animales.length} animales · click: ver fichas`}
+                    className="w-full flex items-center justify-between gap-2 px-4 py-3 text-white shadow cursor-pointer hover:brightness-110 transition"
+                    style={{
+                      backgroundColor: color,
+                      clipPath: 'polygon(12px 0, 100% 0, 100% 100%, 0 100%, 0 12px)',
+                    }}
+                  >
+                    <span className="text-sm font-semibold truncate">{g.loteNombre}</span>
+                    <span className="flex items-center gap-1.5 shrink-0 text-xs font-semibold">
+                      {algunEnfermo && (
+                        <span className="size-2 rounded-full bg-red-500 ring-2 ring-white/70" aria-label="Tiene enfermos" />
+                      )}
+                      {g.animales.length} animales
+                      <ChevronDown className="size-4 -rotate-90" strokeWidth={2} />
+                    </span>
+                  </button>
+                )
+              }
+              return (
+                <div key={clave} className="space-y-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span
+                      className="inline-flex items-center gap-1.5 text-xs font-semibold truncate"
+                      style={{ color }}
+                    >
+                      <span
+                        className="size-2.5 rounded-full shrink-0 border border-border"
+                        style={{ backgroundColor: color }}
+                        aria-hidden
+                      />
+                      {g.loteNombre} · {g.animales.length}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => toggleLote(clave)}
+                      title="Contraer fichas"
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors cursor-pointer"
+                    >
+                      <ChevronDown className="size-3.5 rotate-180" strokeWidth={2} /> Contraer
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {g.animales.map((a) => {
               const muerto = a.estado === 'muerto'
               const draggable = canMover && !muerto
               const arrastrando = drag?.animalId === a.animalId
@@ -306,6 +399,14 @@ export function CorralMapa({
                     e.dataTransfer.effectAllowed = 'move'
                     e.dataTransfer.setData('text/plain', String(a.animalId))
                     setError('')
+                    // Centra el dock en la sección de corrales desde el inicio.
+                    const rect = asideRef.current?.getBoundingClientRect()
+                    if (rect) {
+                      setDockX({
+                        left: rect.left + rect.width / 2,
+                        max: Math.max(280, Math.min(rect.width, window.innerWidth - 24)),
+                      })
+                    }
                     requestAnimationFrame(() => {
                       if (dragTokenRef.current === token) setDrag(item)
                     })
@@ -327,6 +428,10 @@ export function CorralMapa({
                 </button>
               )
             })}
+                  </div>
+                </div>
+              )
+            })}
           </div>
         )}
       </div>
@@ -336,7 +441,10 @@ export function CorralMapa({
   if (!canVer) return null
 
   return (
-    <aside className="space-y-4 lg:sticky lg:top-4">
+    <aside
+      ref={asideRef}
+      className="space-y-4 lg:sticky lg:top-4 lg:h-[calc(100vh-13rem)] lg:min-h-[480px] lg:overflow-y-auto"
+    >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <h2 className="text-base font-semibold text-foreground tracking-tight">Corrales</h2>
@@ -488,10 +596,13 @@ export function CorralMapa({
         />
       )}
 
-      {drag && destinosDock.length > 0 &&
+      {drag && destinosDock.length > 0 && dockX &&
         createPortal(
-          <div className="fixed inset-x-0 bottom-6 z-[9998] flex justify-center px-4 pointer-events-none">
-            <div className="pointer-events-auto bg-card/95 backdrop-blur border border-border rounded-xl shadow-2xl p-2.5 flex items-center gap-2 max-w-[92vw] overflow-x-auto">
+          <div
+            className="fixed bottom-6 z-[9998] pointer-events-none"
+            style={{ left: dockX.left, transform: 'translateX(-50%)', maxWidth: dockX.max }}
+          >
+            <div className="pointer-events-auto bg-card/95 backdrop-blur border border-border rounded-xl shadow-2xl p-2.5 flex items-center gap-2 overflow-x-auto">
               <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground shrink-0">
                 Soltar en
               </span>

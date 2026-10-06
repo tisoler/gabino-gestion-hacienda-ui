@@ -42,7 +42,8 @@ interface NavItem {
   to?: string
   label: string
   icon: LucideIcon
-  permission?: string
+  /** Uno o varios permisos (varios = OR: alcanza con uno). */
+  permission?: string | string[]
   /** Sólo visible para sys-admin. */
   soloSysAdmin?: boolean
   /** Oculto para el rol cliente (aunque tenga el permiso). */
@@ -69,7 +70,7 @@ const NAV_GROUPS: NavItem[][] = [
     { to: '/lotes', label: 'Lotes', icon: MapPin, permission: 'lectura:lote' },
     { to: '/alimentacion', label: 'Alimentación', icon: Utensils, permission: 'lectura:alimento' },
     { to: '/salidas', label: 'Salidas', icon: Truck, permission: 'lectura:salida' },
-    { to: '/balances', label: 'Balances', icon: Calculator, permission: 'lectura:balance-lote' },
+    { to: '/balances', label: 'Balances', icon: Calculator, permission: ['lectura:balance-lote', 'lectura:balance-lote-base'] },
   ],
   [
     {
@@ -106,7 +107,8 @@ function SidebarContent({ isCollapsed, setIsCollapsed, onCloseMobile }: SidebarC
   // Nombre de Firestore; si no hay, el mail sin dominio.
   const displayName = user?.nombre ?? user?.nombreUsuario?.split('@')[0] ?? ''
 
-  const hasPermission = (permission: string) => permisos.includes(permission)
+  const hasPermission = (permission: string | string[]) =>
+    Array.isArray(permission) ? permission.some((p) => permisos.includes(p)) : permisos.includes(permission)
 
   const visible = (item: NavItem) =>
     (!item.permission || hasPermission(item.permission)) &&

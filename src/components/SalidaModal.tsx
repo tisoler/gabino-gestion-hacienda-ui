@@ -142,8 +142,8 @@ export function SalidaModal({
         if (e.target === e.currentTarget) onClose()
       }}
     >
-      <div className="w-full max-w-2xl bg-card border border-border rounded-lg shadow-xl p-6 space-y-4 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between">
+      <div className="w-full max-w-4xl bg-card border border-border rounded-lg shadow-xl p-6 flex flex-col gap-3 max-h-[90vh] overflow-hidden">
+        <div className="flex items-center justify-between shrink-0">
           <h2 className="text-base font-semibold text-foreground">Dar salida</h2>
           <button
             onClick={onClose}
@@ -153,15 +153,18 @@ export function SalidaModal({
             <X className="size-4" strokeWidth={2} />
           </button>
         </div>
+        <div className="min-h-0 flex-1 flex flex-col gap-3 overflow-hidden">
         <p className="text-xs text-muted-foreground">
           Salen animales vivos (sano/enfermo). Los que no tienen peso final deben cargarlo aquí;
           se registra el pesaje final y la diferencia de peso del grupo.
         </p>
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-foreground">Opción *</label>
-            <div className="grid grid-cols-3 gap-1 rounded-md bg-muted/40 p-0.5">
+        <div className="flex flex-col sm:flex-row gap-3 mt-1">
+          <div className="space-y-1.5 flex-1 min-w-0 sm:max-w-xs">
+            <div className="flex items-center min-h-7">
+              <label className="text-xs font-medium text-foreground">Alcance *</label>
+            </div>
+            <div className="grid grid-cols-3 gap-1 rounded-md bg-muted/40 p-0.5 h-[34px]">
               {(
                 [
                   { value: 'lote', label: 'Lote' },
@@ -173,7 +176,7 @@ export function SalidaModal({
                   key={op.value}
                   onClick={() => setTipo(op.value)}
                   disabled={op.value === 'partida' && !esMulti}
-                  className={`rounded px-2 py-1.5 text-xs font-medium transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${tipo === op.value
+                  className={`inline-flex items-center justify-center rounded px-2 py-1.5 text-xs font-medium transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${tipo === op.value
                     ? 'bg-primary text-primary-foreground shadow-sm'
                     : 'text-muted-foreground hover:text-foreground'
                     }`}
@@ -184,27 +187,25 @@ export function SalidaModal({
             </div>
           </div>
           {tipo === 'partida' ? (
-            <SelectAutocomplete
-              label="Partida *"
-              placeholder="Elegir partida..."
-              value={idPartida}
-              onChange={setIdPartida}
-              options={partidas.map((p) => ({ value: p.id, label: `${p.nombre} (${p.nAnimales} animales)` }))}
-              clearable={false}
-            />
-          ) : (
-            <div />
-          )}
-        </div>
-
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="space-y-1.5">
-            <div className="flex items-center min-h-7">
-              <label className="text-xs font-medium text-foreground">Fecha de la salida *</label>
+            <div className="flex-1 min-w-0 pt-3">
+              <SelectAutocomplete
+                label="Partida *"
+                placeholder="Elegir partida..."
+                value={idPartida}
+                onChange={setIdPartida}
+                options={partidas.map((p) => ({ value: p.id, label: `${p.nombre} (${p.nAnimales} animales)` }))}
+                clearable={false}
+              />
             </div>
-            <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className={inputCls} />
-          </div>
-          <div className="space-y-1.5">
+          ) : (
+            <div className="space-y-1.5 sm:w-44 shrink-0">
+              <div className="flex items-center min-h-7">
+                <label className="text-xs font-medium text-foreground whitespace-nowrap">Fecha de la salida *</label>
+              </div>
+              <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className={inputCls} />
+            </div>
+          )}
+          <div className="space-y-1.5 sm:w-80 shrink-0">
             <div className="flex items-center justify-between gap-2 min-h-7">
               <label className="text-xs font-medium text-foreground">Hora *</label>
               <AtajosHora value={hora} onChange={setHora} />
@@ -223,8 +224,9 @@ export function SalidaModal({
         />
 
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+        </div>
 
-        <div className="flex justify-end gap-2 pt-1">
+        <div className="flex justify-end gap-2 pt-3 border-t border-border shrink-0">
           <button
             onClick={onClose}
             className="px-4 py-2 rounded-md text-sm font-medium text-muted-foreground hover:bg-accent transition-colors cursor-pointer"

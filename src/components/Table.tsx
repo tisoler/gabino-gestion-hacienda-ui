@@ -12,9 +12,11 @@ interface TableProps<T> {
   emptyMessage?: string
   /** Fila clickeable (los botones interiores deben detener la propagación). */
   onRowClick?: (item: T) => void
+  /** Filas más bajas (celdas con menos padding vertical). */
+  compacto?: boolean
 }
 
-export function Table<T>({ data, columns, actions, emptyMessage = 'No hay datos disponibles.', onRowClick }: TableProps<T>) {
+export function Table<T>({ data, columns, actions, emptyMessage = 'No hay datos disponibles.', onRowClick, compacto = false }: TableProps<T>) {
   return (
     <div className="premium-card overflow-hidden">
       {actions && (
@@ -30,7 +32,7 @@ export function Table<T>({ data, columns, actions, emptyMessage = 'No hay datos 
               {columns.map((col, i) => (
                 <th
                   key={i}
-                  className="text-left px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground border-b border-border whitespace-nowrap"
+                  className={`text-left px-4 ${compacto ? 'py-2' : 'py-3'} text-[11px] font-semibold uppercase tracking-wide text-muted-foreground border-b border-border whitespace-nowrap`}
                 >
                   {col.header}
                 </th>
@@ -46,7 +48,7 @@ export function Table<T>({ data, columns, actions, emptyMessage = 'No hay datos 
                   className={`hover:bg-muted/40 transition-colors ${onRowClick ? 'cursor-pointer' : ''}`}
                 >
                   {columns.map((col, ci) => (
-                    <td key={ci} className="px-4 py-3 text-sm text-foreground border-b border-border last:border-b-0">
+                    <td key={ci} className={`px-4 ${compacto ? 'py-1.5' : 'py-3'} text-sm text-foreground border-b border-border last:border-b-0`}>
                       {typeof col.accessor === 'function'
                         ? col.accessor(item)
                         : (item[col.accessor] as ReactNode)}

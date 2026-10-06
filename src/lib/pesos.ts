@@ -19,8 +19,10 @@ export interface CargarPesajesPayload {
   pesoTotal?: number
   desbasteTotal?: number
   animales?: { animalId: number; peso: number; desbaste?: number }[]
-  /** Sólo para el pesaje INICIAL: partida objetivo (si el lote tiene varias). */
+  /** Sólo intermedios: alcance por partida (el inicial lo resuelve el server). */
   idPartida?: number
+  /** Sólo INICIAL: fuerza partida nueva aunque la fecha coincida con otro inicial. */
+  nuevaPartida?: boolean
 }
 
 /** Partida del lote (ver LotesService.partidasDelLote). */

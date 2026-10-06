@@ -47,12 +47,20 @@ export function EvolucionPesos({
   const [incluirEntregados, setIncluirEntregados] = useState(false)
   const multi = partidas.length > 1
 
+  // Lote cerrado (sin vivos): se incluyen los entregados siempre, si no el
+  // gráfico quedaría vacío aunque haya pesajes.
+  const hayVivos = useMemo(
+    () => animales.some((a) => a.estado === 'sano' || a.estado === 'enfermo'),
+    [animales],
+  )
+  const incluir = incluirEntregados || !hayVivos
+
   const incluidos = useMemo(
     () =>
       animales.filter(
-        (a) => a.estado !== 'muerto' && (incluirEntregados || a.estado !== 'salido'),
+        (a) => a.estado !== 'muerto' && (incluir || a.estado !== 'salido'),
       ),
-    [animales, incluirEntregados],
+    [animales, incluir],
   )
   const idsIncluidos = useMemo(() => new Set(incluidos.map((a) => a.id)), [incluidos])
   const pesajesVisibles = useMemo(
@@ -138,12 +146,16 @@ export function EvolucionPesos({
         {checkbox('total', multi ? 'Peso total por partida' : 'Peso total del lote')}
         {checkbox('promedio', multi ? 'Promedio (lote y partidas)' : 'Peso promedio')}
         {checkbox('individuales', 'Pesos individuales')}
-        <label className="inline-flex items-center gap-1.5 text-xs font-medium text-foreground cursor-pointer ml-auto">
+        <label
+          className={`inline-flex items-center gap-1.5 text-xs font-medium text-foreground ml-auto ${hayVivos ? 'cursor-pointer' : 'cursor-default opacity-70'}`}
+          title={hayVivos ? undefined : 'El lote no tiene animales vivos: se incluyen los entregados'}
+        >
           <input
             type="checkbox"
-            checked={incluirEntregados}
+            checked={incluir}
+            disabled={!hayVivos}
             onChange={(e) => setIncluirEntregados(e.target.checked)}
-            className="size-3.5 accent-[var(--color-primary)] cursor-pointer"
+            className="size-3.5 accent-[var(--color-primary)] cursor-pointer disabled:cursor-default"
           />
           Incluir entregados
         </label>

@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Loader2 } from 'lucide-react'
+import { NumeroInput } from './NumeroInput'
 import {
   round2,
   hoyIso,
@@ -218,12 +219,11 @@ export function EditorPesos({
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1">
               <label className="text-xs font-medium text-foreground">Peso total (kg)</label>
-              <input
-                type="number"
+              <NumeroInput
                 step="0.01"
-                min="0"
+                min={0}
                 value={pesoTotal}
-                onChange={(e) => onTotalPeso(e.target.value)}
+                onChange={onTotalPeso}
                 className={`${inputCls} w-full`}
                 placeholder="Ej: 12000"
               />
@@ -232,12 +232,11 @@ export function EditorPesos({
               <label className="text-xs font-medium text-foreground">
                 Desbaste total <span className="text-muted-foreground">(opcional)</span>
               </label>
-              <input
-                type="number"
+              <NumeroInput
                 step="0.01"
-                min="0"
+                min={0}
                 value={desbasteTotal}
-                onChange={(e) => onTotalDesbaste(e.target.value)}
+                onChange={onTotalDesbaste}
                 className={`${inputCls} w-full`}
                 placeholder="Ej: 200"
               />
@@ -255,21 +254,19 @@ export function EditorPesos({
                 >
                   {a.caravana ? `Caravana: ${a.caravana}` : `#${a.nAnimal ?? a.id}`}
                 </span>
-                <input
-                  type="number"
+                <NumeroInput
                   step="0.01"
-                  min="0"
+                  min={0}
                   value={filas[a.id]?.peso ?? ''}
-                  onChange={(e) => onFilaPeso(a.id, e.target.value)}
+                  onChange={(v) => onFilaPeso(a.id, v)}
                   className={`${inputCls} w-35 shrink-0`}
                   placeholder="Peso (kg)"
                 />
-                <input
-                  type="number"
+                <NumeroInput
                   step="0.01"
-                  min="0"
+                  min={0}
                   value={filas[a.id]?.desbaste ?? ''}
-                  onChange={(e) => onFilaDesbaste(a.id, e.target.value)}
+                  onChange={(v) => onFilaDesbaste(a.id, v)}
                   className={`${inputCls} w-30 shrink-0`}
                   placeholder="Desb."
                   title="Desbaste (opcional)"
@@ -283,12 +280,11 @@ export function EditorPesos({
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1">
               <label className="text-xs font-medium text-foreground">Peso total (kg) *</label>
-              <input
-                type="number"
+              <NumeroInput
                 step="0.01"
-                min="0"
+                min={0}
                 value={pesoTotal}
-                onChange={(e) => setPesoTotal(e.target.value)}
+                onChange={setPesoTotal}
                 className={`${inputCls} w-full`}
                 placeholder="Ej: 12000"
               />
@@ -297,12 +293,11 @@ export function EditorPesos({
               <label className="text-xs font-medium text-foreground">
                 Desbaste total <span className="text-muted-foreground">(opcional)</span>
               </label>
-              <input
-                type="number"
+              <NumeroInput
                 step="0.01"
-                min="0"
+                min={0}
                 value={desbasteTotal}
-                onChange={(e) => setDesbasteTotal(e.target.value)}
+                onChange={setDesbasteTotal}
                 className={`${inputCls} w-full`}
                 placeholder="Ej: 200"
               />
@@ -339,24 +334,22 @@ export function EditorPesos({
                 <span className="w-35 shrink-0 text-sm text-muted-foreground truncate" title={a.caravana ? `Caravana ${a.caravana}` : `Animal ${a.nAnimal ?? a.id}`}>
                   {a.caravana ? `Caravana: ${a.caravana}` : `#${a.nAnimal ?? a.id}`}
                 </span>
-                <input
-                  type="number"
+                <NumeroInput
                   step="0.01"
-                  min="0"
+                  min={0}
                   value={filas[a.id]?.peso ?? ''}
-                  onChange={(e) =>
-                    setFilas((s) => ({ ...s, [a.id]: { ...(s[a.id] ?? { desbaste: '' }), peso: e.target.value } }))
+                  onChange={(v) =>
+                    setFilas((s) => ({ ...s, [a.id]: { ...(s[a.id] ?? { desbaste: '' }), peso: v } }))
                   }
                   className={`${inputCls} w-35 shrink-0`}
                   placeholder="Peso (kg)"
                 />
-                <input
-                  type="number"
+                <NumeroInput
                   step="0.01"
-                  min="0"
+                  min={0}
                   value={filas[a.id]?.desbaste ?? ''}
-                  onChange={(e) =>
-                    setFilas((s) => ({ ...s, [a.id]: { ...(s[a.id] ?? { peso: '' }), desbaste: e.target.value } }))
+                  onChange={(v) =>
+                    setFilas((s) => ({ ...s, [a.id]: { ...(s[a.id] ?? { peso: '' }), desbaste: v } }))
                   }
                   className={`${inputCls} w-30 shrink-0`}
                   placeholder="Desb."

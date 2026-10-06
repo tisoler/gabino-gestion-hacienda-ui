@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Loader2, X } from 'lucide-react'
 import SelectAutocomplete, { type SelectAutocompleteOption } from './SelectAutocomplete'
+import { NumeroInput } from './NumeroInput'
 import { INSUMO_UNIDADES, INSUMO_UNIDAD_LABELS } from '../constantes'
 
 export interface CategoriaInsumoOption {
@@ -259,12 +260,11 @@ export function InsumoModal({
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1.5">
             <label className="text-sm font-medium text-foreground">Precio ref.</label>
-            <input
-              type="number"
+            <NumeroInput
               min={0}
               step="0.01"
               value={precio}
-              onChange={(e) => setPrecio(e.target.value)}
+              onChange={setPrecio}
               className={inputCls}
               placeholder="Ej: 1200.50"
             />

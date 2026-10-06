@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import useSWR from 'swr'
 import { AlertCircle, Loader2, Lock, Pencil, Trash2, Utensils } from 'lucide-react'
@@ -6,6 +6,7 @@ import api, { fetcher } from '../lib/api'
 import { useAuth } from '../contexts/auth-context'
 import SelectAutocomplete from '../components/SelectAutocomplete'
 import { Table } from '../components/Table'
+import { DetallePopover } from '../components/DetallePopover'
 import { AlimentarModal } from '../components/AlimentarModal'
 import type { AlimentacionView } from '../lib/alimentacion'
 
@@ -38,61 +39,75 @@ export default function Alimentacion() {
     hasta: '',
   })
 
-  const { data: alimentaciones, isLoading, mutate: mutateAlimentaciones } = useSWR<AlimentacionView[]>(
-    puedeVer ? '/alimentaciones' : null,
-    fetcher,
-    { revalidateOnFocus: false },
-  )
-  const all = useMemo(() => alimentaciones ?? [], [alimentaciones])
+  const qs = useMemo(() => {
+    const p = new URLSearchParams()
+    if (filtros.cliente) p.set('idCliente', filtros.cliente)
+    if (filtros.corral) p.set('idCorral', filtros.corral)
+    if (filtros.lote) p.set('idLote', filtros.lote)
+    if (filtros.desde) p.set('fechaDesde', filtros.desde)
+    if (filtros.hasta) p.set('fechaHasta', filtros.hasta)
+    return p.toString()
+  }, [filtros])
 
-  const set = (patch: Partial<Filtros>) => setFiltros((f) => ({ ...f, ...patch }))
+  const [pagina, setPagina] = useState(0)
+  const [filasPorPagina, setFilasPorPagina] = useState(8)
+  const listaRef = useRef<HTMLDivElement>(null)
+
+  const set = (patch: Partial<Filtros>) => {
+    setFiltros((f) => ({ ...f, ...patch }))
+    setPagina(0)
+  }
 
   const [editando, setEditando] = useState<AlimentacionView | null>(null)
   const [eliminandoId, setEliminandoId] = useState<number | null>(null)
   const [error, setError] = useState('')
 
-  // Fila "toca" un filtro si alguno de sus lotes lo cumple.
-  const coincide = (a: AlimentacionView, f: Filtros, ignorar?: keyof Filtros) => {
-    if (ignorar !== 'corral' && f.corral && a.corral.id !== Number(f.corral)) return false
-    if (ignorar !== 'cliente' && f.cliente && !a.lotes.some((l) => l.idCliente === f.cliente)) return false
-    if (ignorar !== 'lote' && f.lote && !a.lotes.some((l) => l.loteId === Number(f.lote))) return false
-    return true
-  }
+  const listKey = puedeVer
+    ? `/alimentaciones?page=${pagina + 1}&pageSize=${filasPorPagina}${qs ? `&${qs}` : ''}`
+    : null
+  const { data: paginaResp, isLoading, mutate: mutateAlimentaciones } = useSWR<{
+    data: AlimentacionView[]
+    total: number
+  }>(listKey, fetcher, { revalidateOnFocus: false })
+  const filas = paginaResp?.data ?? []
+  const total = paginaResp?.total ?? 0
 
-  const filtradas = useMemo(
-    () =>
-      all.filter(
-        (a) =>
-          coincide(a, filtros) &&
-          (!filtros.desde || a.fecha >= filtros.desde) &&
-          (!filtros.hasta || a.fecha <= filtros.hasta),
-      ),
-    [all, filtros],
-  )
-
-  // Opciones encadenadas: cada selector se filtra por los DEMÁS filtros (sin rango de fechas).
-  const opcionesCorrales = useMemo(() => {
-    const base = all.filter((a) => coincide(a, filtros, 'corral'))
-    const map = new Map<number, string>()
-    for (const a of base) map.set(a.corral.id, a.corral.nombre)
-    return [...map.entries()].map(([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label, 'es'))
-  }, [all, filtros])
-
-  const opcionesLotes = useMemo(() => {
-    const base = all.filter((a) => coincide(a, filtros, 'lote'))
-    const map = new Map<number, string>()
-    for (const a of base) for (const l of a.lotes) map.set(l.loteId, l.loteNombre)
-    return [...map.entries()].map(([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label, 'es'))
-  }, [all, filtros])
-
-  const opcionesClientes = useMemo(() => {
-    const base = all.filter((a) => coincide(a, filtros, 'cliente'))
-    const map = new Map<string, string>()
-    for (const a of base) for (const l of a.lotes) if (l.idCliente) map.set(l.idCliente, l.clienteNombre ?? l.idCliente)
-    return [...map.entries()].map(([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label, 'es'))
-  }, [all, filtros])
+  // Opciones encadenadas desde el server (cada lista excluye su propio filtro).
+  const { data: opciones } = useSWR<{
+    clientes: { id: string; nombre: string }[]
+    corrales: { id: number; nombre: string }[]
+    lotes: { id: number; nombre: string }[]
+  }>(puedeVer ? `/alimentaciones/filtros${qs ? `?${qs}` : ''}` : null, fetcher, {
+    revalidateOnFocus: false,
+  })
+  const opcionesCorrales = (opciones?.corrales ?? []).map((o) => ({ value: o.id, label: o.nombre }))
+  const opcionesLotes = (opciones?.lotes ?? []).map((o) => ({ value: o.id, label: o.nombre }))
+  const opcionesClientes = (opciones?.clientes ?? []).map((o) => ({ value: o.id, label: o.nombre }))
 
   const tieneFiltros = !!(filtros.cliente || filtros.corral || filtros.lote || filtros.desde || filtros.hasta)
+
+  // Paginado a la altura de la pantalla (sin scroll vertical): se mide la
+  // primera fila visible y se calcula cuántas entran bajo el listado. El
+  // pageSize resultante se pide al server (no se trae de más).
+  useEffect(() => {
+    const calcular = () => {
+      const el = listaRef.current
+      if (!el) return
+      const topDoc = el.getBoundingClientRect().top + window.scrollY
+      const altos = Array.from(el.querySelectorAll('tbody tr'))
+        .map((tr) => tr.getBoundingClientRect().height)
+        .filter((h) => h > 0)
+      const altoFila = altos[0] ?? 52
+      const reserva = 52 // paginador + márgenes inferiores
+      setFilasPorPagina(Math.max(1, Math.floor((window.innerHeight - topDoc - reserva) / altoFila)))
+    }
+    calcular()
+    window.addEventListener('resize', calcular)
+    return () => window.removeEventListener('resize', calcular)
+  }, [total])
+
+  const totalPaginas = Math.max(1, Math.ceil(total / filasPorPagina))
+  const paginaSegura = Math.min(pagina, totalPaginas - 1)
 
   const handleEliminar = async (a: AlimentacionView) => {
     if (a.liquidada) return
@@ -121,7 +136,7 @@ export default function Alimentacion() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold text-foreground tracking-tight">Alimentación</h1>
@@ -131,33 +146,39 @@ export default function Alimentacion() {
         </div>
       </div>
 
-      {/* Filtros */}
-      <section className="bg-card border border-border rounded-lg p-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <SelectAutocomplete
-          label="Cliente"
-          placeholder="Todos"
-          value={filtros.cliente}
-          onChange={(v) => set({ cliente: String(v) })}
-          options={opcionesClientes}
-          clearable
-        />
-        <SelectAutocomplete
-          label="Corral"
-          placeholder="Todos"
-          value={filtros.corral}
-          onChange={(v) => set({ corral: String(v) })}
-          options={opcionesCorrales}
-          clearable
-        />
-        <SelectAutocomplete
-          label="Lote"
-          placeholder="Todos"
-          value={filtros.lote}
-          onChange={(v) => set({ lote: String(v) })}
-          options={opcionesLotes}
-          clearable
-        />
-        <div className="space-y-1.5">
+      {/* Filtros: una sola línea compacta */}
+      <section className="bg-card border border-border rounded-lg px-3 py-2.5 flex flex-wrap items-end gap-2">
+        <div className="flex-1 min-w-[150px]">
+          <SelectAutocomplete
+            label="Cliente"
+            placeholder="Todos"
+            value={filtros.cliente}
+            onChange={(v) => set({ cliente: String(v) })}
+            options={opcionesClientes}
+            clearable
+          />
+        </div>
+        <div className="flex-1 min-w-[150px]">
+          <SelectAutocomplete
+            label="Corral"
+            placeholder="Todos"
+            value={filtros.corral}
+            onChange={(v) => set({ corral: String(v) })}
+            options={opcionesCorrales}
+            clearable
+          />
+        </div>
+        <div className="flex-1 min-w-[150px]">
+          <SelectAutocomplete
+            label="Lote"
+            placeholder="Todos"
+            value={filtros.lote}
+            onChange={(v) => set({ lote: String(v) })}
+            options={opcionesLotes}
+            clearable
+          />
+        </div>
+        <div className="min-w-[130px] space-y-1">
           <label className="text-xs font-medium text-foreground">Desde</label>
           <input
             type="date"
@@ -166,7 +187,7 @@ export default function Alimentacion() {
             className="w-full px-3 py-2 bg-background border border-border rounded-md text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
           />
         </div>
-        <div className="space-y-1.5">
+        <div className="min-w-[130px] space-y-1">
           <label className="text-xs font-medium text-foreground">Hasta</label>
           <input
             type="date"
@@ -176,14 +197,12 @@ export default function Alimentacion() {
           />
         </div>
         {tieneFiltros && (
-          <div className="flex items-end">
-            <button
-              onClick={() => set({ cliente: '', corral: '', lote: '', desde: '', hasta: '' })}
-              className="px-3 py-2 rounded-md text-sm font-medium text-muted-foreground hover:bg-accent transition-colors cursor-pointer"
-            >
-              Limpiar filtros
-            </button>
-          </div>
+          <button
+            onClick={() => set({ cliente: '', corral: '', lote: '', desde: '', hasta: '' })}
+            className="px-3 py-2 rounded-md text-sm font-medium text-muted-foreground hover:bg-accent transition-colors cursor-pointer shrink-0"
+          >
+            Limpiar
+          </button>
         )}
       </section>
 
@@ -198,17 +217,17 @@ export default function Alimentacion() {
         <div className="flex items-center justify-center p-20">
           <Loader2 className="size-8 text-primary animate-spin" strokeWidth={1.75} />
         </div>
-      ) : filtradas.length === 0 ? (
+      ) : total === 0 ? (
         <div className="bg-card border border-border rounded-lg p-8 text-center">
           <p className="text-sm text-muted-foreground">
-            {all.length === 0 ? 'Todavía no hay alimentaciones registradas.' : 'Sin resultados para los filtros seleccionados.'}
+            {!tieneFiltros ? 'Todavía no hay alimentaciones registradas.' : 'Sin resultados para los filtros seleccionados.'}
           </p>
         </div>
       ) : (
-        <>
+        <div ref={listaRef}>
           {/* Mobile: cards */}
           <div className="sm:hidden space-y-3">
-            {filtradas.map((a) => (
+            {filas.map((a) => (
               <div key={a.id} className="premium-card p-4 space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
@@ -297,7 +316,8 @@ export default function Alimentacion() {
           {/* Desktop: tabla */}
           <div className="hidden sm:block">
             <Table<AlimentacionView>
-              data={filtradas}
+              data={filas}
+              compacto
               columns={[
                 {
                   header: 'Fecha / Hora',
@@ -322,51 +342,64 @@ export default function Alimentacion() {
                 {
                   header: 'Cantidad',
                   accessor: (a) => (
-                    <span className="text-foreground tabular-nums">
-                      {fmtKg(a.cantidadKg)} kg{' '}
-                      <span className="text-xs text-muted-foreground">({fmtKg(a.cantidadPorAnimal)}/an.)</span>
+                    <DetallePopover etiqueta={`${fmtKg(a.cantidadKg)} kg`} titulo="Cantidad">
+                      <p className="text-sm text-foreground tabular-nums">
+                        {fmtKg(a.cantidadKg)} kg{' '}
+                        <span className="text-xs text-muted-foreground">({fmtKg(a.cantidadPorAnimal)}/an.)</span>
+                      </p>
                       {a.nAnimalesEnfermeria > 0 && (
-                        <span className="block text-xs text-muted-foreground">
+                        <p className="text-xs text-muted-foreground">
                           {fmtKg(a.cantidadCorralKg)} corral + {fmtKg(a.cantidadEnfermeriaKg)} enf.
-                        </span>
+                        </p>
                       )}
-                    </span>
+                    </DetallePopover>
                   ),
                 },
                 {
                   header: 'Animales',
                   accessor: (a) => (
-                    <span className="text-muted-foreground tabular-nums">
-                      {a.nAnimales}
-                      {a.nAnimalesEnfermeria > 0 && (
-                        <span className="text-primary"> + {a.nAnimalesEnfermeria} enf.</span>
-                      )}
-                    </span>
+                    <DetallePopover
+                      etiqueta={`${a.nAnimales + a.nAnimalesEnfermeria} animales`}
+                      titulo="Animales"
+                    >
+                      <p className="text-sm text-muted-foreground tabular-nums">
+                        En común: <span className="text-foreground font-medium">{a.nAnimales}</span>
+                      </p>
+                      <p className="text-sm text-muted-foreground tabular-nums">
+                        En enfermería: <span className="text-foreground font-medium">{a.nAnimalesEnfermeria}</span>
+                      </p>
+                    </DetallePopover>
                   ),
                 },
                 {
                   header: 'Reparto por lote',
                   accessor: (a) => (
-                    <div className="space-y-0.5">
-                      {a.lotes.map((l) => (
-                        <div key={l.loteId} className="text-xs">
-                          <span className="text-foreground">{l.loteNombre}</span>
-                          {l.clienteNombre && (
-                            <span className="text-muted-foreground"> · {l.clienteNombre}</span>
-                          )}
-                          <span className="text-muted-foreground tabular-nums">
-                            {' '}
-                            — {fmtKg(l.cantidadKg)} kg ({l.nAnimales} an.)
-                            {l.nAnimalesEnfermeria > 0 && (
-                              <span className="text-primary">
-                                {' '}
-                                + {fmtKg(l.cantidadEnfermeriaKg)} kg enf. ({l.nAnimalesEnfermeria} an.)
-                              </span>
+                    <DetallePopover
+                      etiqueta={a.lotes.map((l) => l.loteNombre).join(', ') || '—'}
+                      titulo="Reparto por lote"
+                      ancho={360}
+                    >
+                      <div className="space-y-0.5">
+                        {a.lotes.map((l) => (
+                          <div key={l.loteId} className="text-xs">
+                            <span className="text-foreground">{l.loteNombre}</span>
+                            {l.clienteNombre && (
+                              <span className="text-muted-foreground"> · {l.clienteNombre}</span>
                             )}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
+                            <span className="text-muted-foreground tabular-nums">
+                              {' '}
+                              — {fmtKg(l.cantidadKg)} kg ({l.nAnimales} an.)
+                              {l.nAnimalesEnfermeria > 0 && (
+                                <span className="text-primary">
+                                  {' '}
+                                  + {fmtKg(l.cantidadEnfermeriaKg)} kg enf. ({l.nAnimalesEnfermeria} an.)
+                                </span>
+                              )}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </DetallePopover>
                   ),
                 },
                 ...(isSysAdmin
@@ -430,7 +463,28 @@ export default function Alimentacion() {
               ]}
             />
           </div>
-        </>
+          {totalPaginas > 1 && (
+            <div className="flex items-center justify-center gap-3 pt-1">
+              <button
+                onClick={() => setPagina((p) => Math.max(0, p - 1))}
+                disabled={paginaSegura === 0}
+                className="px-3 py-1.5 rounded-md text-xs font-medium border border-border text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+              >
+                ← Anterior
+              </button>
+              <span className="text-xs text-muted-foreground tabular-nums">
+                Página {paginaSegura + 1} de {totalPaginas} · {total} registros
+              </span>
+              <button
+                onClick={() => setPagina((p) => Math.min(totalPaginas - 1, p + 1))}
+                disabled={paginaSegura >= totalPaginas - 1}
+                className="px-3 py-1.5 rounded-md text-xs font-medium border border-border text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+              >
+                Siguiente →
+              </button>
+            </div>
+          )}
+        </div>
       )}
 
       {editando && (

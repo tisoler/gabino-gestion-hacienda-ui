@@ -7,7 +7,7 @@ export interface SelectAutocompleteOption {
   label: string
 }
 
-/** Orden de las opciones. Por ahora solo alfabético, con sentido asc/desc. */
+/** Orden de las opciones: alfabético con números en orden natural (1, 2, 10), asc/desc. */
 export interface SelectAutocompleteSort {
   by: 'alfabetico'
   direction: 'asc' | 'desc'
@@ -82,7 +82,7 @@ export default function SelectAutocomplete({
 
   const sorted = useMemo(() => {
     const dir = sort.direction === 'desc' ? -1 : 1
-    return [...options].sort((a, b) => a.label.localeCompare(b.label, 'es') * dir)
+    return [...options].sort((a, b) => a.label.localeCompare(b.label, 'es', { numeric: true }) * dir)
   }, [options, sort.direction])
 
   const matches = (v: string | number, opt: SelectAutocompleteOption) =>

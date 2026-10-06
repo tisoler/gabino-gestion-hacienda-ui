@@ -3,6 +3,7 @@ import useSWR, { useSWRConfig } from 'swr'
 import { Loader2, Plus, Trash2, X } from 'lucide-react'
 import api, { fetcher } from '../lib/api'
 import SelectAutocomplete, { type SelectAutocompleteOption } from './SelectAutocomplete'
+import { NumeroInput } from './NumeroInput'
 import { InsumoModal, type InsumoFormValues } from './InsumoModal'
 
 const inputCls =
@@ -334,13 +335,12 @@ export function DietaFormModal({
                   />
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
-                  <input
-                    type="number"
+                  <NumeroInput
                     min={1}
                     max={100}
                     step="0.01"
                     value={f.porcentaje}
-                    onChange={(e) => setFila(f.key, { porcentaje: e.target.value })}
+                    onChange={(v) => setFila(f.key, { porcentaje: v })}
                     className={`${inputCls} w-24`}
                     placeholder="%"
                   />

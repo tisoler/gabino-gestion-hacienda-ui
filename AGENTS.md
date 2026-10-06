@@ -91,8 +91,13 @@ El lint del UI usa `eslint.config.js` (sin autofix en el script). No `any` nuevo
     partida si todos sus animales son de una, o "Lote"). Cargar un inicial de animales que
     faltan con la **misma fecha** los agrega a esa fila; con **fecha distinta** crea una fila
     nueva (el modal de "+ Pesaje inicial" parte de la última fecha de inicial). `GrupoInicial`
-    es display-only (total + "N de M" + Editar que abre el modal). **INTERMEDIO** y **INICIAL**
-    comparten el modal `PesajeLotePartidaModal` (alcance Lote/Partida, totales peso+desbaste ÷N
+     es display-only (total + "N de M" + Editar que abre el modal). **INICIAL** unificado en
+     `PesajeLotePartidaModal` (`modoInicial`, sin alcance: fecha default hoy + selección por
+     animal con checkbox y totales ÷ elegidos; si la fecha coincide con otro inicial muestra
+     "Nueva partida", si no, se crea una; el server une/mueve por fecha). Editar lista
+     sólo los que ya tienen inicial (con X para quitarlos del pesaje+partida, reversible,
+     y peso exigido por incluido). **INTERMEDIO** usa el
+     mismo modal (alcance Lote/Partida, totales peso+desbaste ÷N
     y tabla por animal prefilled y editable; sin "Animales"). Intermedio nuevo = todos los vivos
     del alcance; editar una fecha incluye los **salidos** pesados en esa fecha (corregir
     peso/fecha) y permite agregar los que entraron después. **FINALES por fecha**
@@ -145,6 +150,9 @@ El lint del UI usa `eslint.config.js` (sin autofix en el script). No `any` nuevo
   picker de enfermerías), `TraerEnfermeriaModal` (estado de salida + causa), `CambioEstadoModal`
   (causa al pasar a enfermo/muerto) y `MovimientosModal` (historial del animal, fecha DESC).
 - **Table** (`src/components/Table.tsx`): tabla genérica con Tailwind (tokens actuales).
+- **NumeroInput** (`src/components/NumeroInput.tsx`): input numérico controlado sin spinners
+  y sin cambio por scroll (la rueda hace blur para que scrollee la vista). Usarlo en todos
+  los campos numéricos en lugar de `<input type="number">` crudo.
 - **CorralMapa** (`src/components/CorralMapa.tsx`): panel de corrales de `/lotes` (ficha por
   animal con color del lote + **número de caravana**; anillo rojo = enfermo, atenuado = muerto;
   **click abre el
@@ -181,22 +189,33 @@ El lint del UI usa `eslint.config.js` (sin autofix en el script). No `any` nuevo
   elige Global o una empresa (`idEmpresa` null/número) y ve badge "Global"; una dieta global
   sólo la gestiona el admin (`puedeGestionar`) y sus insumos deben ser globales.
 - **Alimentación** (`pages/Alimentacion.tsx`, `components/AlimentarModal.tsx`, tipos en
-  `lib/alimentacion.ts`): el modal de carga tiene el corral fijo arriba y permite **varias
-  filas** (dieta + fecha + **hora (def 12:00)** + cantidad por fila; botón "+ Agregar fila", la
-  fila nueva hereda fecha/hora y dieta de la anterior). Envía `POST /alimentaciones/masiva`; el
+  `lib/alimentacion.ts`): el modal de carga tiene el corral arriba y una **spreadsheet**
+  (una fila por alimentación: Fecha, Dieta, Cantidad, Hora (def 09:00), Animales; tab por
+  celda, Enter agrega fila debajo heredando; al pie, N + Agregar para sumar varias). La
+  fila nueva hereda fecha/cantidad/dieta de la anterior. Hora y Animales van en
+  `DetallePopover` (hora: atajos + time picker; animales: conteos por lote editables).
+  Envía `POST /alimentaciones/masiva`; el
   server **reconstruye los animales del corral al instante fecha+hora de cada fila** (la cantidad
   es la del CORRAL; enfermería suma una estimación extra a la misma tasa — ver DESIGN del server).
   Cada fila muestra, debajo, los **conteos reconstruidos por lote (común / enfermería)
   editables** (precargados vía `GET /alimentaciones/estado-corral`, con botón "Recalcular");
   los conteos exhibidos se mandan **siempre** como `ajuste` (editados o no: lo mostrado =
   lo guardado). Sin `ajuste` (p. ej. recalc sin correr), el server reconstruye al instante
-  como fallback.
+  como fallback. Vale para cualquier común activo (aunque esté vacío hoy): la
+  reconstrucción es histórica y una fecha pasada puede tener animales; sin animales en el
+  instante no se puede guardar (ni recalculados ni editados a 0).
   El
   histórico muestra el desglose corral/enfermería (kg y nº de animales) por evento y por lote.
+  Filtros en una línea compacta; tabla **paginada a la altura de la pantalla** (sin scroll
+  vertical: se mide la primera fila y se calcula cuántas entran) y las celdas
+  Cantidad/Animales/Reparto muestran sólo totales como links con `DetallePopover` (el detalle
+  es el contenido anterior de cada celda).
   El botón "Alimentar" está en `/lotes` (junto a "Nuevo lote", sin corral) y en cada card de
   `CorralMapa` (corral preseleccionado, `onAlimentar(corralId)`). La vista `/alimentacion`
   lista con **filtros encadenados** (cliente/corral/lote se filtran entre sí sin el rango de
-  fechas) y recibe `?lote=` para preseleccionar el lote desde `/lotes/:id`. En mobile se ven
+  fechas, opciones desde `GET /alimentaciones/filtros`) y recibe `?lote=` para preseleccionar
+  el lote desde `/lotes/:id`. Paginado server (`page`/`pageSize`, el tamaño se mide a la
+  altura de la pantalla) con `total` para el pager. En mobile se ven
   **cards** y en desktop una **tabla**. La **fecha + hora es read-only** en la vista; para editar
   se usa el botón **✎ Editar** de la fila, que reabre el `AlimentarModal` en `modoEdicion`
   (corral read-only, una sola fila, conteos reconstruidos editables) y guarda con `PATCH
@@ -223,15 +242,18 @@ El lint del UI usa `eslint.config.js` (sin autofix en el script). No `any` nuevo
 ## Rutas principales
 
 `/` (Dashboard) · `/login` · `/mi-empresa` (anfitrión/sys-admin) · `/clientes` (anfitrión/sys-admin,
-clientes + operarios con tabs) · `/lotes` (listado + mapa de corrales a la derecha; la
+clientes + operarios con tabs) · `/lotes` (dos listas con scroll interno 70/30: **Lotes activos** —en corral o sin
+animales, ordenados por corral natural— y **Lotes anteriores** —con animales pero sin
+vivos, por creación DESC—; filas clickeables + mapa de corrales a la derecha; la
 **columna Empresa** sólo aparece para el cliente —puede tener lotes de varias empresas—, que
 además ve "Mis lotes", sin columna Cliente y con el panel de corrales más angosto) ·
 `/lotes/nueva|:id` (detalle: corral/color/proveedor/lugar de origen + titular (cliente o
 anfitrión) + tabla de animales con raza/categoría, toggle de estado Sano/Enfermo/Muerto, enfermería
 y botón de historial de movimientos; sección Pesajes colapsada por defecto + sección
-Balance económico colapsada (`components/BalanceLote.tsx`: costos de alimentaciones y
-tratamientos con totales, masivos al lote en un registro con popover de caravanas;
-`lectura:balance-lote`); el cliente lo ve en modo SÓLO LECTURA) ·
+Balance económico colapsada (`components/BalanceLote.tsx`: siempre resumido por rubro;
+con `lectura:balance-lote` cada rubro abre su detalle en popover grande y hay botón
+Liquidar (`components/LiquidacionModal.tsx`: date picker + checks preseleccionados hasta
+la fecha, `escritura:balance-lote`); el cliente lo ve en modo SÓLO LECTURA) ·
 `/corrales` (alta/edición/deshabilitar; con `lectura:corral`, **oculta al cliente** vía
 `ocultarParaCliente` en el Sidebar) · `/animales/razas` y `/animales/categorias` (sys-admin,
 submenú "Animales" en el Sidebar) · `/dietas` (módulo de alimentación: lista de dietas +
@@ -241,7 +263,9 @@ cliente/corral/lote/rango de fechas; `lectura:alimento` ve, `escritura:alimento`
 desde `/lotes` o el mapa de corrales) · `/salidas` (histórico de salidas con filtros por
 cliente/corral/lote/partida/fechas y la diferencia de peso del grupo; `lectura:salida` ve,
 `escritura:salida` registra desde la sección Pesajes del lote) · `/balances` (resumen de
-costos por lote agrupado por cliente, con totales; `lectura:balance-lote`) · `/insumos` (catálogo de
+costos por lote agrupado por cliente —por empresa si es cliente—, con totales;
+`lectura:balance-lote`, o `lectura:balance-lote-base` para el resumido por rubro;
+rol `cliente-base` = cliente + base) · `/insumos` (catálogo de
 insumos con precio de referencia, filtro de alcance Todas/Global/Por empresa y modal de
 alta/edición estilo Corrales (`components/InsumoModal.tsx`, reutilizado por el alta
 on-the-fly en dietas con `nombreInicial`/`categoriaFija`/`alcanceFijo`); `lectura:insumo`

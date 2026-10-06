@@ -118,8 +118,8 @@ export function PesajeFinalModal({
         if (e.target === e.currentTarget) onClose()
       }}
     >
-      <div className="w-full max-w-2xl bg-card border border-border rounded-lg shadow-xl p-6 space-y-4 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between">
+      <div className="w-full max-w-4xl bg-card border border-border rounded-lg shadow-xl p-6 flex flex-col gap-3 max-h-[90vh] overflow-hidden">
+        <div className="flex items-center justify-between shrink-0">
           <h2 className="text-base font-semibold text-foreground">Agregar pesaje final</h2>
           <button
             onClick={onClose}
@@ -129,6 +129,7 @@ export function PesajeFinalModal({
             <X className="size-4" strokeWidth={2} />
           </button>
         </div>
+        <div className="min-h-0 flex-1 flex flex-col gap-3 overflow-hidden">
         <p className="text-xs text-muted-foreground">
           Peso final de los animales que aún no lo tienen ({animales.length} restantes). Elegí el
           alcance y cargá el total (se reparte ÷ N) o cada animal; con desbaste opcional.
@@ -137,7 +138,7 @@ export function PesajeFinalModal({
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-foreground">Alcance *</label>
-            <div className="grid grid-cols-3 gap-1 rounded-md bg-muted/40 p-0.5">
+            <div className="grid grid-cols-3 gap-1 rounded-md bg-muted/40 p-0.5 h-[38px]">
               {(
                 [
                   { value: 'lote', label: 'Lote' },
@@ -149,7 +150,7 @@ export function PesajeFinalModal({
                   key={op.value}
                   onClick={() => setAlcance(op.value)}
                   disabled={op.value === 'partida' && !esMulti}
-                  className={`rounded px-2 py-1.5 text-xs font-medium transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                  className={`inline-flex items-center justify-center rounded px-2 py-1.5 text-xs font-medium transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
                     alcance === op.value
                       ? 'bg-primary text-primary-foreground shadow-sm'
                       : 'text-muted-foreground hover:text-foreground'
@@ -197,8 +198,9 @@ export function PesajeFinalModal({
         />
 
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+        </div>
 
-        <div className="flex justify-end gap-2 pt-1">
+        <div className="flex justify-end gap-2 pt-3 border-t border-border shrink-0">
           <button
             onClick={onClose}
             className="px-4 py-2 rounded-md text-sm font-medium text-muted-foreground hover:bg-accent transition-colors cursor-pointer"

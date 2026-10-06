@@ -22,7 +22,7 @@ export default function Layout() {
             antes, pero en monitores grandes se recuperan ~400px que se
             perdían en márgenes, dejando las tablas más holgadas y evitando
             el scroll horizontal. Tope alto para pantallas ultra-anchas. */}
-        <div className="w-[95%] max-w-[1800px] mx-auto p-4 md:p-6 pt-16 md:pt-4 min-h-screen">
+        <div className="w-[97%] max-w-[2100px] mx-auto px-2 py-4 md:px-4 md:py-6 pt-16 md:pt-4 min-h-screen">
           <div className="print-hide flex justify-end items-center gap-2 mb-7">
             {currentEmpresa && !isSysAdmin && (
               <span className="inline-flex items-center gap-2 px-3 py-1.5 bg-primary-soft text-primary text-xs font-semibold rounded-full">

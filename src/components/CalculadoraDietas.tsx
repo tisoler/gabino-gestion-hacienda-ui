@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Calculator } from 'lucide-react'
 import { fmtKg, kgInsumo, type DietaView } from '../lib/dietas'
+import { NumeroInput } from './NumeroInput'
 
 const inputCls =
   'px-3 py-2 bg-background border border-border rounded-md text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-primary transition-colors'
@@ -47,12 +48,11 @@ export function CalculadoraDietas({ dietas }: { dietas: DietaView[] }) {
         </div>
         <div className="space-y-1.5">
           <label className="text-xs font-medium text-foreground">Cantidad a preparar (kg)</label>
-          <input
-            type="number"
+          <NumeroInput
             min={0}
             step="0.01"
             value={cantidad}
-            onChange={(e) => setCantidad(e.target.value)}
+            onChange={setCantidad}
             className={`${inputCls} w-full`}
           />
         </div>

@@ -14,6 +14,7 @@ import api, { fetcher } from '../lib/api'
 import { useAuth } from '../contexts/auth-context'
 import { Table } from '../components/Table'
 import SelectAutocomplete from '../components/SelectAutocomplete'
+import { NumeroInput } from '../components/NumeroInput'
 import { CORRAL_TIPOS, CORRAL_TIPO_LABELS } from '../constantes'
 
 const ADMIN_KEY = 'adminEmpresaId'
@@ -391,7 +392,7 @@ function CorralModal({
           <label htmlFor="corral-capacidad" className="text-sm font-medium text-foreground">
             Capacidad <span className="font-normal text-muted-foreground">— informativa</span>
           </label>
-          <input id="corral-capacidad" type="number" min={1} value={capacidad} onChange={(e) => setCapacidad(e.target.value)} className={inputCls} placeholder="Ej: 30" />
+          <NumeroInput id="corral-capacidad" min={1} value={capacidad} onChange={setCapacidad} className={inputCls} placeholder="Ej: 30" />
         </div>
 
         <div className="space-y-1.5">

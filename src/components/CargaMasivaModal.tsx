@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Loader2, Users, X } from 'lucide-react'
 import CatalogoSelect from './CatalogoSelect'
 import { CategoriaSelect, PelajeSelect, SexoDeCategoria } from './AnimalCatalogos'
+import { NumeroInput } from './NumeroInput'
 import type { PartidaDto } from '../lib/pesos'
 
 const inputCls =
@@ -150,12 +151,11 @@ export function CargaMasivaModal({
           <PelajeSelect value={idPelaje} onChange={setIdPelaje} idRaza={idRaza} />
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-foreground">Cantidad *</label>
-            <input
-              type="number"
+            <NumeroInput
               min={1}
               max={500}
               value={cantidad}
-              onChange={(e) => setCantidad(e.target.value)}
+              onChange={setCantidad}
               className={`${inputCls} w-full`}
               placeholder="Ej: 10"
             />

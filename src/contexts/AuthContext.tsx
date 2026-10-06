@@ -42,7 +42,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isSysAdmin = user?.roles?.includes(Roles.SYS_ADMIN) || false
   const isAnfitrion = user?.roles?.includes(Roles.ANFITRION) || false
   const isOperario = user?.roles?.includes(Roles.OPERARIO) || false
-  const isCliente = user?.roles?.includes(Roles.CLIENTE) || false
+  const isCliente = user?.roles?.includes(Roles.CLIENTE) || user?.roles?.includes(Roles.CLIENTE_BASE) || false
 
   // Empresas visibles para el usuario (sys-admin: todas; resto: sus idEmpresas)
   const { data: listadoEmpresas, isLoading: isLoadingEmpresas } = useSWR<Empresa[]>(

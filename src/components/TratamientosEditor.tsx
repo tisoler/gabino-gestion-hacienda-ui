@@ -3,6 +3,7 @@ import useSWR from 'swr'
 import { Loader2, Plus, Trash2 } from 'lucide-react'
 import { fetcher } from '../lib/api'
 import SelectAutocomplete, { type SelectAutocompleteOption } from './SelectAutocomplete'
+import { NumeroInput } from './NumeroInput'
 import { TratamientoModal, type TratamientoFormValues } from './TratamientoModal'
 import { InsumoModal, type InsumoFormValues } from './InsumoModal'
 import type { TratamientoPayload } from '../lib/veterinaria'
@@ -327,12 +328,11 @@ export function TratamientosEditor({
                   emptyMessage="No encontrado. Escribí para agregar."
                 />
               </div>
-              <input
-                type="number"
+              <NumeroInput
                 min={0}
                 step="0.01"
                 value={f.precio}
-                onChange={(e) => setFila(f.key, { precio: e.target.value })}
+                onChange={(v) => setFila(f.key, { precio: v })}
                 className={`${inputCls} w-28 shrink-0`}
                 placeholder="Precio"
                 title="Precio del tratamiento (default: referencia)"
@@ -376,12 +376,11 @@ export function TratamientosEditor({
                       emptyMessage="No encontrado. Escribí para agregar."
                     />
                   </div>
-                  <input
-                    type="number"
+                  <NumeroInput
                     min={0}
                     step="0.01"
                     value={ins.precio}
-                    onChange={(e) => setIns(f.key, ins.key, { precio: e.target.value })}
+                    onChange={(v) => setIns(f.key, ins.key, { precio: v })}
                     className={`${inputCls} w-28 shrink-0`}
                     placeholder="Precio"
                     title="Precio del insumo (default: referencia)"

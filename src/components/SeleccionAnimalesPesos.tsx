@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { round2 } from '../lib/pesos'
+import { NumeroInput } from './NumeroInput'
 
 export interface FilaSeleccionPesos {
   id: number
@@ -19,6 +20,9 @@ export interface DatosSeleccionPesos {
 
 const inputCls =
   'px-2.5 py-1.5 bg-background border border-border rounded-md text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-primary transition-colors'
+// Filas de la tabla: versión más baja para filas compactas.
+const inputFilaCls =
+  'px-2 py-1 bg-background border border-border rounded-md text-[13px] text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-primary transition-colors'
 
 const parseNum = (s: string): number | null => {
   const n = parseFloat(s.replace(',', '.'))
@@ -213,23 +217,16 @@ export function SeleccionAnimalesPesos({
   }
 
   return (
-    <div className="space-y-1.5">
-      <div className="flex items-center justify-between gap-2">
-        <label className="text-xs font-medium text-foreground">
-          {titulo} ({seleccionable ? seleccion.size : animales.length} de {animales.length})
-        </label>
-      </div>
-
+    <div className="flex min-h-0 flex-col gap-1.5">
       {/* Totales: siempre visibles */}
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="space-y-1">
           <label className="text-xs font-medium text-foreground">Peso total (kg)</label>
-          <input
-            type="number"
+          <NumeroInput
             min={0}
             step="0.01"
             value={pesoTotal}
-            onChange={(e) => onTotalPeso(e.target.value)}
+            onChange={onTotalPeso}
             className={`${inputCls} w-full`}
             placeholder="Ej: 12000"
           />
@@ -238,12 +235,11 @@ export function SeleccionAnimalesPesos({
           <label className="text-xs font-medium text-foreground">
             Desbaste total <span className="text-muted-foreground">(opcional)</span>
           </label>
-          <input
-            type="number"
+          <NumeroInput
             min={0}
             step="0.01"
             value={desbasteTotal}
-            onChange={(e) => onTotalDesbaste(e.target.value)}
+            onChange={onTotalDesbaste}
             className={`${inputCls} w-full`}
             placeholder="Ej: 200"
           />
@@ -281,15 +277,20 @@ export function SeleccionAnimalesPesos({
           />
         </div>
       )}
-      <p className="text-xs text-muted-foreground">
-        {editables.length > 0
-          ? `El total se reparte ÷ ${editables.length} (los ${seleccionable ? 'seleccionados' : 'del alcance'
-          } sin peso final); si editás un animal, se recalcula el total.`
-          : 'Seleccioná animales sin peso final para repartir el total.'}
-      </p>
+      <div className="flex items-end justify-between gap-2">
+        <p className="text-xs text-muted-foreground flex-1 min-w-0">
+          {editables.length > 0
+            ? `El total se reparte ÷ ${editables.length} (los ${seleccionable ? 'seleccionados' : 'del alcance'
+            } sin peso final); si editás un animal, se recalcula el total.`
+            : 'Seleccioná animales sin peso final para repartir el total.'}
+        </p>
+        <span className="text-xs font-medium text-foreground shrink-0 whitespace-nowrap">
+          {titulo} ({seleccionable ? seleccion.size : animales.length} de {animales.length})
+        </span>
+      </div>
 
       {/* Tabla única: altura de fila constante (reservada para los inputs) */}
-      <div className="border border-border rounded-md divide-y divide-border max-h-72 overflow-y-auto">
+      <div className="border border-border rounded-md divide-y divide-border min-h-0 overflow-y-auto max-h-72">
         {visibles.length === 0 && (
           <p className="px-3 py-3 text-xs text-muted-foreground">
             {animales.length === 0 ? 'No hay animales.' : 'Sin coincidencias para la búsqueda.'}
@@ -300,7 +301,7 @@ export function SeleccionAnimalesPesos({
           return (
             <div
               key={a.id}
-              className="flex items-center gap-2 px-3 py-2 min-h-[52px]"
+              className="flex items-center gap-2 px-3 py-1 min-h-[36px]"
             >
               {seleccionable && (
                 <input
@@ -323,22 +324,20 @@ export function SeleccionAnimalesPesos({
               )}
               {elegido && !a.tieneFinal && (
                 <>
-                  <input
-                    type="number"
+                  <NumeroInput
                     min={0}
                     step="0.01"
                     value={pesos[a.id] ?? ''}
-                    onChange={(e) => onFilaPeso(a.id, e.target.value)}
-                    className={`${inputCls} flex-1 min-w-0`}
+                    onChange={(v) => onFilaPeso(a.id, v)}
+                    className={`${inputFilaCls} flex-1 min-w-0`}
                     placeholder="Peso final (kg)"
                   />
-                  <input
-                    type="number"
+                  <NumeroInput
                     min={0}
                     step="0.01"
                     value={desbastes[a.id] ?? ''}
-                    onChange={(e) => onFilaDesbaste(a.id, e.target.value)}
-                    className={`${inputCls} flex-1 min-w-0`}
+                    onChange={(v) => onFilaDesbaste(a.id, v)}
+                    className={`${inputFilaCls} flex-1 min-w-0`}
                     placeholder="Desbaste"
                     title="Desbaste (opcional)"
                   />

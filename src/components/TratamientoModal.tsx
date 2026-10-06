@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Loader2, X } from 'lucide-react'
+import { NumeroInput } from './NumeroInput'
 
 export interface TratamientoFormValues {
   nombre: string
@@ -139,12 +140,11 @@ export function TratamientoModal({
 
         <div className="space-y-1.5">
           <label className="text-sm font-medium text-foreground">Precio ref.</label>
-          <input
-            type="number"
+          <NumeroInput
             min={0}
             step="0.01"
             value={precio}
-            onChange={(e) => setPrecio(e.target.value)}
+            onChange={setPrecio}
             className={inputCls}
             placeholder="Ej: 3500.00"
           />

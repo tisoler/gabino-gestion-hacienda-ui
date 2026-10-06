@@ -22,6 +22,10 @@ interface BalanceLoteResumen {
   total: number
   liquidado: number
   pendiente: number
+  desglose?: {
+    alimentacion: { liquidado: number; pendiente: number }
+    tratamientos: { liquidado: number; pendiente: number }
+  }
 }
 
 /**
@@ -32,7 +36,9 @@ interface BalanceLoteResumen {
 export default function Balances() {
   const navigate = useNavigate()
   const { permisos, isCliente } = useAuth()
-  const puedeVer = permisos.includes('lectura:balance-lote')
+  // lectura:balance-lote se impone a base: con ambos se ve el detalle.
+  const completo = permisos.includes('lectura:balance-lote')
+  const puedeVer = completo || permisos.includes('lectura:balance-lote-base')
 
   const { data: resumen, isLoading } = useSWR<BalanceLoteResumen[]>(
     puedeVer ? '/lotes/balances' : null,
@@ -153,35 +159,73 @@ export default function Balances() {
                   <Table<BalanceLoteResumen>
                     data={g.lotes}
                     onRowClick={(l) => navigate(`/lotes/${l.idLote}`)}
-                    columns={[
-                      {
-                        header: 'Lote',
-                        accessor: (l) => (
-                          <div className="min-w-0">
-                            <p className="font-medium text-foreground truncate">{l.loteNombre}</p>
-                            <p className="text-xs text-muted-foreground">{l.nAnimales} animales</p>
-                          </div>
-                        ),
-                      },
-                      {
-                        header: 'Total',
-                        accessor: (l) => (
-                          <span className="text-foreground tabular-nums">$ {fmtMoney(l.total)}</span>
-                        ),
-                      },
-                      {
-                        header: 'Liquidado',
-                        accessor: (l) => (
-                          <span className="text-muted-foreground tabular-nums">$ {fmtMoney(l.liquidado)}</span>
-                        ),
-                      },
-                      {
-                        header: 'Pendiente',
-                        accessor: (l) => (
-                          <span className="text-foreground tabular-nums font-medium">$ {fmtMoney(l.pendiente)}</span>
-                        ),
-                      },
-                    ]}
+                    columns={
+                      completo
+                        ? [
+                          {
+                            header: 'Lote',
+                            accessor: (l) => (
+                              <div className="min-w-0">
+                                <p className="font-medium text-foreground truncate">{l.loteNombre}</p>
+                                <p className="text-xs text-muted-foreground">{l.nAnimales} animales</p>
+                              </div>
+                            ),
+                          },
+                          {
+                            header: 'Total',
+                            accessor: (l) => (
+                              <span className="text-foreground tabular-nums">$ {fmtMoney(l.total)}</span>
+                            ),
+                          },
+                          {
+                            header: 'Liquidado',
+                            accessor: (l) => (
+                              <span className="text-muted-foreground tabular-nums">$ {fmtMoney(l.liquidado)}</span>
+                            ),
+                          },
+                          {
+                            header: 'Pendiente',
+                            accessor: (l) => (
+                              <span className="text-foreground tabular-nums font-medium">$ {fmtMoney(l.pendiente)}</span>
+                            ),
+                          },
+                        ]
+                        : [
+                          {
+                            header: 'Lote',
+                            accessor: (l) => (
+                              <div className="min-w-0">
+                                <p className="font-medium text-foreground truncate">{l.loteNombre}</p>
+                                <p className="text-xs text-muted-foreground">{l.nAnimales} animales</p>
+                              </div>
+                            ),
+                          },
+                          {
+                            header: 'Alim. liq.',
+                            accessor: (l) => (
+                              <span className="text-muted-foreground tabular-nums">$ {fmtMoney(l.desglose?.alimentacion.liquidado)}</span>
+                            ),
+                          },
+                          {
+                            header: 'Alim. pend.',
+                            accessor: (l) => (
+                              <span className="text-foreground tabular-nums">$ {fmtMoney(l.desglose?.alimentacion.pendiente)}</span>
+                            ),
+                          },
+                          {
+                            header: 'Trat. liq.',
+                            accessor: (l) => (
+                              <span className="text-muted-foreground tabular-nums">$ {fmtMoney(l.desglose?.tratamientos.liquidado)}</span>
+                            ),
+                          },
+                          {
+                            header: 'Trat. pend.',
+                            accessor: (l) => (
+                              <span className="text-foreground tabular-nums">$ {fmtMoney(l.desglose?.tratamientos.pendiente)}</span>
+                            ),
+                          },
+                        ]
+                    }
                   />
                 )}
               </section>

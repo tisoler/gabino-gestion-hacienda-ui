@@ -3,6 +3,8 @@ export const Roles = {
   ANFITRION: 'anfitrion',
   OPERARIO: 'operario',
   CLIENTE: 'cliente',
+  /** Cliente nuevo: igual al cliente + lectura:balance-lote-base (resumido). */
+  CLIENTE_BASE: 'cliente-base',
 } as const;
 
 export const ROLES_LABELS: Record<string, string> = {
@@ -10,6 +12,7 @@ export const ROLES_LABELS: Record<string, string> = {
   [Roles.ANFITRION]: 'Anfitrión',
   [Roles.OPERARIO]: 'Operario',
   [Roles.CLIENTE]: 'Cliente',
+  [Roles.CLIENTE_BASE]: 'Cliente base',
 };
 
 export function getRoleLabel(roles: string[] | undefined): string {
@@ -20,16 +23,18 @@ export function getRoleLabel(roles: string[] | undefined): string {
   return ''
 }
 
-/** idRol (roles/{id} en Firestore): 1=sys-admin, 2=anfitrion, 3=operario, 4=cliente. */
+/** idRol (roles/{id} en Firestore): 1=sys-admin, 2=anfitrion, 3=operario, 4=cliente, 5=cliente-base. */
 export const ID_ROL_ANFITRION = 2
 export const ID_ROL_OPERARIO = 3
 export const ID_ROL_CLIENTE = 4
+export const ID_ROL_CLIENTE_BASE = 5
 
 /** Roles que sys-admin puede asignar a un usuario nuevo (sin rol). */
 export const ROL_ASIGNABLE_OPTIONS: { value: number; label: string; role: string }[] = [
   { value: ID_ROL_ANFITRION, label: 'Anfitrión', role: Roles.ANFITRION },
   { value: ID_ROL_OPERARIO, label: 'Operario', role: Roles.OPERARIO },
   { value: ID_ROL_CLIENTE, label: 'Cliente', role: Roles.CLIENTE },
+  { value: ID_ROL_CLIENTE_BASE, label: 'Cliente base', role: Roles.CLIENTE_BASE },
 ]
 
 /** Tipos de corral. Común: aloja un lote (estado libre/ocupado derivado).

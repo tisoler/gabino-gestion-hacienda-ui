@@ -63,6 +63,7 @@ import {
 } from '../components/AnimalModals'
 import { TratamientoLoteModal } from '../components/TratamientoLoteModal'
 import { BalanceLote } from '../components/BalanceLote'
+import { NumeroInput } from '../components/NumeroInput'
 import { aTratamientosDto } from '../lib/veterinaria'
 import {
   CORRAL_TIPOS,
@@ -207,7 +208,10 @@ export default function LoteDetalle() {
   const [estadoModal, setEstadoModal] = useState<{ animal: Animal; estado: string } | null>(null)
   const [movModal, setMovModal] = useState<Animal | null>(null)
   const [tratarLoteModal, setTratarLoteModal] = useState(false)
-  const [inicialModal, setInicialModal] = useState<{ editar: boolean; idPartida: number | null } | null>(null)
+  const [inicialModal, setInicialModal] = useState<{
+    idPartida?: number | null
+    soloFaltantes?: boolean
+  } | null>(null)
   const [intermedioModal, setIntermedioModal] = useState<{ fecha: string | null } | null>(null)
   const [pesajeBusy, setPesajeBusy] = useState(false)
   const [finalModal, setFinalModal] = useState(false)
@@ -362,6 +366,43 @@ export default function LoteDetalle() {
       })
   }
 
+  // Pool del inicial unificado: vivos + los que ya tienen inicial (incluidos
+  // salidos), de cualquier partida; el modal filtra por selección y la partida
+  // la decide la fecha (ver gruposIniciales).
+  const filasInicialTodasFila = (): FilaLotePartida[] =>
+    (lote?.animales ?? [])
+      .filter((a) => esVivo(a) || pesajeInicialPorAnimal.has(a.id))
+      .map((a) => {
+        const p = pesajeInicialPorAnimal.get(a.id)
+        return aFilaLP(a, p?.peso ?? null, p?.desbaste ?? null)
+      })
+
+  // Iniciales existentes agrupados por fecha → partida con más animales
+  // (desempate menor id), igual que el server: la fecha elegida se une a esa
+  // partida salvo "Nueva partida".
+  const gruposIniciales = useMemo(() => {
+    const animalPartida = new Map((lote?.animales ?? []).map((a) => [a.id, a.idPartida]))
+    const porFecha = new Map<string, Map<number, number>>()
+    for (const p of pesajes) {
+      if (p.tipo !== 'inicial') continue
+      const pid = animalPartida.get(p.animalId)
+      if (pid == null) continue
+      const m = porFecha.get(p.fecha) ?? new Map<number, number>()
+      m.set(pid, (m.get(pid) ?? 0) + 1)
+      porFecha.set(p.fecha, m)
+    }
+    return [...porFecha.entries()]
+      .map(([fecha, m]) => {
+        let mejor = -1
+        for (const [pid, c] of m) {
+          if (mejor < 0 || c > m.get(mejor)! || (c === m.get(mejor)! && pid < mejor)) mejor = pid
+        }
+        const partida = partidas.find((x) => x.id === mejor)
+        return { fecha, partidaId: mejor, partidaNombre: partida?.nombre ?? `Partida ${mejor}` }
+      })
+      .sort((a, b) => (a.fecha < b.fecha ? 1 : -1))
+  }, [pesajes, lote, partidas])
+
   // Nuevo inicial: sólo los que faltan (vivos sin inicial).
   const filasInicialFaltantesFila = (): FilaLotePartida[] =>
     animalesSinInicial.map((a) => aFilaLP(a, null, null))
@@ -369,11 +410,12 @@ export default function LoteDetalle() {
   // Una fila de pesaje inicial por PARTIDA (el badge depende de la partida, no
   // de la fecha: dos partidas pueden compartir fecha).
   // Filas del editor del inicial de una partida (vivos + con inicial, incluidos
-  // salidos), prefilled.
-  const filasInicialFila = (idPartida: number): FilaLotePartida[] =>
+  // salidos), prefilled. Con `soloConInicial`, sólo los que ya tienen inicial
+  // (para editar ese pesaje sin agregar otros).
+  const filasInicialFila = (idPartida: number, soloConInicial = false): FilaLotePartida[] =>
     (lote?.animales ?? [])
       .filter((a) => a.idPartida === idPartida)
-      .filter((a) => esVivo(a) || pesajeInicialPorAnimal.has(a.id))
+      .filter((a) => (soloConInicial ? pesajeInicialPorAnimal.has(a.id) : esVivo(a) || pesajeInicialPorAnimal.has(a.id)))
       .map((a) => {
         const p = pesajeInicialPorAnimal.get(a.id)
         return aFilaLP(a, p?.peso ?? null, p?.desbaste ?? null)
@@ -387,11 +429,6 @@ export default function LoteDetalle() {
       .sort()
     return fs.length ? fs[0] : null
   }
-  // Última fecha de pesaje inicial del lote (para precargar un inicial nuevo).
-  const ultimaFechaInicial = useMemo(() => {
-    const fs = pesajes.filter((p) => p.tipo === 'inicial').map((p) => p.fecha).sort()
-    return fs.length ? fs[fs.length - 1] : null
-  }, [pesajes])
 
   /** Nuevo o edición de un pesaje intermedio (fecha null = nuevo). */
   const onIntermedioOk = async (fechaOriginal: string | null, payload: CargarPesajesPayload) => {
@@ -410,7 +447,7 @@ export default function LoteDetalle() {
     }
   }
 
-  /** Nuevo (faltantes) o edición de un pesaje inicial. */
+  /** Pesaje inicial (uno o varios animales, con regla de partida por fecha). */
   const onInicialOk = async (payload: CargarPesajesPayload) => {
     if (!lote) return
     setPesajeBusy(true)
@@ -775,7 +812,7 @@ export default function LoteDetalle() {
                 >
                   {animalesSinInicial.length > 0 && (
                     <button
-                      onClick={() => setInicialModal({ editar: false, idPartida: null })}
+                      onClick={() => setInicialModal({ soloFaltantes: true })}
                       title={`Cargar el peso inicial de los ${animalesSinInicial.length} animales que faltan`}
                       className="inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium border border-info/40 text-white bg-info hover:opacity-90 transition-opacity cursor-pointer"
                     >
@@ -828,7 +865,7 @@ export default function LoteDetalle() {
                   badge="Lote"
                   animales={animalesEditor}
                   puedeEscribir={puedeEscribir}
-                  onEditar={() => setInicialModal({ editar: false, idPartida: null })}
+                  onEditar={() => setInicialModal({})}
                 />
               ) : (
                 partidas.map((p) => {
@@ -840,7 +877,7 @@ export default function LoteDetalle() {
                       badge={partidas.length > 1 ? p.nombre : 'Lote'}
                       animales={filasInicialFila(p.id)}
                       puedeEscribir={puedeEscribir}
-                      onEditar={() => setInicialModal({ editar: true, idPartida: p.id })}
+                      onEditar={() => setInicialModal({ idPartida: p.id })}
                     />
                   )
                 })
@@ -1241,37 +1278,36 @@ export default function LoteDetalle() {
         />
       )}
 
-      {inicialModal &&
-        lote &&
-        (() => {
-          const esNuevo = !inicialModal.editar
-          const filas = esNuevo ? filasInicialFaltantesFila() : filasInicialFila(inicialModal.idPartida!)
-          const fIni = esNuevo ? ultimaFechaInicial : fechaInicialDe(inicialModal.idPartida!)
-          const totalVivos = (lote.animales ?? []).filter(esVivo).length
-          return (
-            <PesajeLotePartidaModal
-              animales={filas}
-              partidas={partidas}
-              titulo={esNuevo ? 'Agregar pesaje inicial' : 'Editar pesaje inicial'}
-              descripcion={
-                esNuevo
-                  ? 'Cargá el peso inicial de los animales que aún no lo tienen. La fecha parte de la del último pesaje inicial; si elegís otra, se crea el inicial con esa fecha.'
-                  : 'Corregí peso, desbaste o fecha. Se incluyen los animales salidos que ya tienen inicial.'
-              }
-              mostrarAlcance={esNuevo}
-              fechaInicial={fIni}
-              submitLabel="Guardar peso inicial"
-              busy={pesajeBusy}
-              notaParcial={
-                esNuevo && animalesSinInicial.length < totalVivos
-                  ? 'Carga parcial: sólo se muestran los animales que aún no tienen peso inicial.'
-                  : undefined
-              }
-              onClose={() => setInicialModal(null)}
-              onOk={onInicialOk}
-            />
-          )
-        })()}
+      {inicialModal && lote && (
+        <PesajeLotePartidaModal
+          animales={
+            inicialModal.soloFaltantes
+              ? filasInicialFaltantesFila()
+              : inicialModal.idPartida != null
+                ? filasInicialFila(inicialModal.idPartida, true)
+                : filasInicialTodasFila()
+          }
+          partidas={partidas}
+          titulo={inicialModal.soloFaltantes ? 'Agregar pesaje inicial' : 'Editar pesaje inicial'}
+          descripcion={
+            inicialModal.soloFaltantes
+              ? 'Elegí la fecha (hoy por defecto) y los animales. Si la fecha coincide con otro inicial, se unen a esa partida salvo que marques Es nueva partida; si no, se crea una nueva.'
+              : 'Corregí peso, desbaste o fecha. Si cambiás la fecha se aplica la misma regla de partida.'
+          }
+          modoInicial
+          permiteNuevaPartida={!!inicialModal.soloFaltantes}
+          gruposIniciales={gruposIniciales}
+          fechaInicial={
+            inicialModal.idPartida != null
+              ? (fechaInicialDe(inicialModal.idPartida) ?? undefined)
+              : undefined
+          }
+          submitLabel="Guardar peso inicial"
+          busy={pesajeBusy}
+          onClose={() => setInicialModal(null)}
+          onOk={onInicialOk}
+        />
+      )}
 
       {intermedioModal &&
         lote &&
@@ -1742,10 +1778,9 @@ function AnimalModal({
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1">
             <label className="text-xs font-medium text-foreground">N° animal</label>
-            <input
-              type="number"
+            <NumeroInput
               value={nAnimal}
-              onChange={(e) => setNAnimal(e.target.value)}
+              onChange={setNAnimal}
               readOnly={esEdicion}
               title={esEdicion ? 'El N° no se puede editar' : undefined}
               className={`${inputCls} ${esEdicion ? 'opacity-60 cursor-not-allowed' : ''}`}
@@ -1820,7 +1855,7 @@ function AnimalModal({
             {requierePeso && (
               <div className="space-y-1">
                 <label className="text-xs font-medium text-foreground">Peso inicial (kg) *</label>
-                <input type="number" step="0.01" min="0" value={pesoInicial} onChange={(e) => setPesoInicial(e.target.value)} className={inputCls} />
+                <NumeroInput step="0.01" min={0} value={pesoInicial} onChange={setPesoInicial} className={inputCls} />
                 <p className="text-xs text-muted-foreground">La partida elegida ya tiene pesaje inicial; se registra a esa fecha.</p>
               </div>
             )}

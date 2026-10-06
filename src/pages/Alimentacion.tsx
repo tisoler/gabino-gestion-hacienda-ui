@@ -59,6 +59,7 @@ export default function Alimentacion() {
   }
 
   const [editando, setEditando] = useState<AlimentacionView | null>(null)
+  const [alimentarOpen, setAlimentarOpen] = useState(false)
   const [eliminandoId, setEliminandoId] = useState<number | null>(null)
   const [error, setError] = useState('')
 
@@ -144,6 +145,14 @@ export default function Alimentacion() {
             Histórico de alimentaciones de corrales (base para el reporte de costo).
           </p>
         </div>
+        {puedeEditar && (
+          <button
+            onClick={() => setAlimentarOpen(true)}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium border border-border hover:bg-accent transition-colors cursor-pointer"
+          >
+            <Utensils className="size-4" strokeWidth={2} /> Alimentar
+          </button>
+        )}
       </div>
 
       {/* Filtros: una sola línea compacta */}
@@ -485,6 +494,15 @@ export default function Alimentacion() {
             </div>
           )}
         </div>
+      )}
+
+      {alimentarOpen && (
+        <AlimentarModal
+          onClose={() => setAlimentarOpen(false)}
+          onSaved={async () => {
+            await mutateAlimentaciones()
+          }}
+        />
       )}
 
       {editando && (

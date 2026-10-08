@@ -21,7 +21,17 @@ export interface CargaMasivaValues {
   nuevaPartida?: boolean
   idPartida?: number
   observaciones?: string
+  /** Fecha de negocio de ingreso (misma para toda la tanda). */
+  fechaIngreso?: string
   animales: PreviewRow[]
+}
+
+const mananaIso = (): string => {
+  const d = new Date()
+  d.setDate(d.getDate() + 1)
+  const m = `${d.getMonth() + 1}`.padStart(2, '0')
+  const day = `${d.getDate()}`.padStart(2, '0')
+  return `${d.getFullYear()}-${m}-${day}`
 }
 
 /**
@@ -33,6 +43,7 @@ export interface CargaMasivaValues {
  */
 export function CargaMasivaModal({
   loteNombre,
+  loteFecha,
   siguienteN,
   partidas,
   onClose,
@@ -40,16 +51,20 @@ export function CargaMasivaModal({
 }: {
   /** Nombre de lote: se usa para precargar las caravanas `{lote}-{i}`. */
   loteNombre: string
+  /** Fecha del lote ('YYYY-MM-DD'): default y mínimo de la fecha de ingreso. */
+  loteFecha: string
   siguienteN: number
   /** Partidas existentes del lote (para decidir unirse a la abierta o crear nueva). */
   partidas: PartidaDto[]
   onClose: () => void
   onOk: (vals: CargaMasivaValues) => Promise<void>
 }) {
+  const manana = useMemo(() => mananaIso(), [])
   const [idRaza, setIdRaza] = useState<string | number>('')
   const [idPelaje, setIdPelaje] = useState<string | number>('')
   const [idCategoria, setIdCategoria] = useState<string | number>('')
   const [cantidad, setCantidad] = useState('')
+  const [fechaIngreso, setFechaIngreso] = useState(loteFecha)
   const [observaciones, setObservaciones] = useState('')
   const [caravanas, setCaravanas] = useState<Record<number, string>>({})
   const [busy, setBusy] = useState(false)
@@ -82,6 +97,10 @@ export function CargaMasivaModal({
   const submit = async () => {
     setError('')
     if (!cantidadOk) return setError('Ingresá una cantidad válida (1 a 500).')
+    if (!fechaIngreso) return setError('Indicá la fecha de ingreso de la tanda.')
+    if ((loteFecha && fechaIngreso < loteFecha) || fechaIngreso > manana) {
+      return setError('La fecha de ingreso debe estar entre la fecha del lote y mañana.')
+    }
     if (rows.length === 0) return
     if (rows.some((r) => !r.caravana)) {
       return setError('Completá la caravana de todos los animales del preview.')
@@ -99,6 +118,7 @@ export function CargaMasivaModal({
         ...(idPelaje ? { idPelaje: Number(idPelaje) } : {}),
         ...(idCategoria ? { idCategoria: Number(idCategoria) } : {}),
         cantidad: n,
+        fechaIngreso: fechaIngreso || undefined,
         // La partida la decide el server (partida abierta → unirse; si no → nueva).
         observaciones: observaciones.trim() || undefined,
         animales: rows.map((r) => ({ nAnimal: r.nAnimal, caravana: r.caravana })),
@@ -158,6 +178,18 @@ export function CargaMasivaModal({
               onChange={setCantidad}
               className={`${inputCls} w-full`}
               placeholder="Ej: 10"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-foreground">Fecha de ingreso *</label>
+            <input
+              type="date"
+              value={fechaIngreso}
+              min={loteFecha || undefined}
+              max={manana}
+              onChange={(e) => setFechaIngreso(e.target.value)}
+              className={`${inputCls} w-full`}
+              title="Fecha en que la tanda ingresó al lote (misma para todos; base para reconstruir presencia histórica)"
             />
           </div>
         </div>

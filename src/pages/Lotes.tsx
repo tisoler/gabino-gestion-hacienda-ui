@@ -196,7 +196,7 @@ export default function Lotes() {
             : 'grid gap-6 lg:grid-cols-[minmax(0,1fr)_420px] xl:grid-cols-[minmax(0,1fr)_560px] 2xl:grid-cols-[minmax(0,1fr)_700px] items-start'
         }
       >
-        <div className="min-w-0 flex flex-col gap-4 lg:h-[calc(100vh-13rem)] lg:min-h-[480px]">
+        <div className="min-w-0 flex flex-col gap-4 lg:h-[calc(100vh-11rem)] lg:min-h-[480px]">
           {isLoading ? (
             <div className="flex items-center justify-center p-20">
               <Loader2 className="size-8 text-primary animate-spin" strokeWidth={1.75} />

@@ -443,7 +443,7 @@ export function CorralMapa({
   return (
     <aside
       ref={asideRef}
-      className="space-y-4 lg:sticky lg:top-4 lg:h-[calc(100vh-13rem)] lg:min-h-[480px] lg:overflow-y-auto"
+      className="space-y-4 lg:sticky lg:top-4 lg:h-[calc(100vh-11rem)] lg:min-h-[480px] lg:overflow-y-auto"
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">

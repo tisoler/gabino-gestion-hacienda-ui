@@ -9,6 +9,7 @@ interface ValoresAnimal {
   idRaza: string | number
   idCategoria: string | number
   idPelaje: string | number
+  fechaIngreso: string
 }
 type Campo = keyof ValoresAnimal
 
@@ -20,18 +21,31 @@ export interface EdicionMasivaValues {
     idRaza?: number | null
     idCategoria?: number | null
     idPelaje?: number | null
+    fechaIngreso?: string
   }[]
 }
 
-const vacio: ValoresAnimal = { idRaza: '', idCategoria: '', idPelaje: '' }
+const vacio: ValoresAnimal = { idRaza: '', idCategoria: '', idPelaje: '', fechaIngreso: '' }
 const labelAnimal = (a: Animal) =>
   a.caravana ? `Car. ${a.caravana}` : `Animal ${a.nAnimal ?? a.id}`
 
+const inputCls =
+  'w-full px-2 py-1.5 bg-background border border-border rounded-md text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-primary transition-colors'
+
+const mananaIso = (): string => {
+  const d = new Date()
+  d.setDate(d.getDate() + 1)
+  const m = `${d.getMonth() + 1}`.padStart(2, '0')
+  const day = `${d.getDate()}`.padStart(2, '0')
+  return `${d.getFullYear()}-${m}-${day}`
+}
+
 /**
- * Edición en masa de raza/categoría/pelaje. Arriba los campos "aplicar a
- * todos" (setean el valor en todos los animales del alcance); abajo el
- * listado permite ajustar cada animal individualmente. Campo sin cambio no se
- * envía; limpio → null (borra el valor).
+ * Edición en masa de raza/categoría/pelaje/fecha de ingreso. Arriba los campos
+ * "aplicar a todos" (setean el valor en todos los animales del alcance); abajo
+ * el listado permite ajustar cada animal individualmente. Campo sin cambio no
+ * se envía; limpio → null (borra el valor, sólo catálogos: la fecha nunca se
+ * borra, vacío = no cambia).
  */
 export function EdicionMasivaModal({
   lote,
@@ -45,6 +59,8 @@ export function EdicionMasivaModal({
   const animales = useMemo(() => lote.animales ?? [], [lote])
   const partidas = lote.partidas ?? []
   const esMulti = partidas.length > 1
+  const manana = useMemo(() => mananaIso(), [])
+  const loteFecha = (lote.fecha ?? '').slice(0, 10)
 
   const [alcance, setAlcance] = useState<'lote' | 'partida'>('lote')
   const [idPartida, setIdPartida] = useState<string | number>('')
@@ -58,6 +74,7 @@ export function EdicionMasivaModal({
           idRaza: a.idRaza ?? '',
           idCategoria: a.idCategoria ?? '',
           idPelaje: a.idPelaje ?? '',
+          fechaIngreso: (a.fechaIngreso ?? '').slice(0, 10),
         },
       ]),
     ),
@@ -119,18 +136,29 @@ export function EdicionMasivaModal({
         idRaza: a.idRaza ?? '',
         idCategoria: a.idCategoria ?? '',
         idPelaje: a.idPelaje ?? '',
+        fechaIngreso: (a.fechaIngreso ?? '').slice(0, 10),
       }
       const val = porAnimal[a.id] ?? orig
-      const e: { animalId: number; idRaza?: number | null; idCategoria?: number | null; idPelaje?: number | null } = {
+      const e: {
+        animalId: number
+        idRaza?: number | null
+        idCategoria?: number | null
+        idPelaje?: number | null
+        fechaIngreso?: string
+      } = {
         animalId: a.id,
       }
-      const push = (campo: Campo) => {
+      const push = (campo: 'idRaza' | 'idCategoria' | 'idPelaje') => {
         if (String(val[campo]) === String(orig[campo])) return
         e[campo] = val[campo] === '' ? null : Number(val[campo])
       }
       push('idRaza')
       push('idCategoria')
       push('idPelaje')
+      // La fecha nunca se borra: vacía = no cambia.
+      if (val.fechaIngreso && val.fechaIngreso !== orig.fechaIngreso) {
+        e.fechaIngreso = val.fechaIngreso
+      }
       if (Object.keys(e).length > 1) lista.push(e)
     }
     return lista
@@ -233,7 +261,7 @@ export function EdicionMasivaModal({
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Aplicar a todos ({incluidos.length})
           </p>
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-4">
             <CatalogoSelect
               tipo="raza"
               label="Raza"
@@ -251,6 +279,18 @@ export function EdicionMasivaModal({
               onChange={(v) => aplicarGeneral('idPelaje', v)}
               idRaza={general.idRaza}
             />
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-foreground">Fecha de ingreso</label>
+              <input
+                type="date"
+                value={general.fechaIngreso}
+                min={loteFecha || undefined}
+                max={manana}
+                onChange={(e) => aplicarGeneral('fechaIngreso', e.target.value)}
+                className={inputCls}
+                title="Aplica la fecha de ingreso a todos los del alcance (se puede ajustar por animal abajo)"
+              />
+            </div>
           </div>
         </div>
 
@@ -261,11 +301,12 @@ export function EdicionMasivaModal({
             {apartados.length > 0 && ` · ${apartados.length} apartados`}
           </label>
           <div className="border border-border rounded-md overflow-hidden max-h-72 overflow-y-auto">
-            <div className="hidden sm:grid grid-cols-[minmax(0,1fr)_repeat(3,minmax(0,1fr))] gap-2 px-3 py-2 bg-muted/60 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            <div className="hidden sm:grid grid-cols-[minmax(0,1fr)_repeat(4,minmax(0,1fr))] gap-2 px-3 py-2 bg-muted/60 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
               <span>Animal</span>
               <span>Raza</span>
               <span>Categoría</span>
               <span>Pelaje</span>
+              <span>Ingreso</span>
             </div>
             <div className="divide-y divide-border">
               {incluidos.length === 0 && (
@@ -282,7 +323,7 @@ export function EdicionMasivaModal({
                 return (
                   <div
                     key={a.id}
-                    className="grid gap-2 px-3 py-2 sm:grid-cols-[minmax(0,1fr)_repeat(3,minmax(0,1fr))] items-start"
+                    className="grid gap-2 px-3 py-2 sm:grid-cols-[minmax(0,1fr)_repeat(4,minmax(0,1fr))] items-start"
                   >
                     <div className="flex items-center gap-2 min-w-0">
                       <span className="text-sm text-foreground truncate">{labelAnimal(a)}</span>
@@ -314,6 +355,15 @@ export function EdicionMasivaModal({
                       value={val.idPelaje}
                       onChange={(v) => setCampoAnimal(a.id, 'idPelaje', v)}
                       clearable
+                    />
+                    <input
+                      type="date"
+                      value={val.fechaIngreso}
+                      min={loteFecha || undefined}
+                      max={manana}
+                      onChange={(e) => setCampoAnimal(a.id, 'fechaIngreso', e.target.value)}
+                      className={inputCls}
+                      title="Fecha de ingreso al lote (vacía = no cambia)"
                     />
                   </div>
                 )

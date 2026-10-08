@@ -78,6 +78,8 @@ export interface Animal {
   nAnimal: number | null
   caravana: string | null
   idPartida: number | null
+  /** Fecha de negocio de ingreso al lote ('YYYY-MM-DD'). */
+  fechaIngreso: string | null
   sexo: string | null
   idPelaje: number | null
   pelajeNombre: string | null
@@ -1194,6 +1196,7 @@ export default function LoteDetalle() {
           animal={animalModal.animal}
           siguienteN={siguienteN}
           partidas={partidas}
+          loteFecha={aInputDate(lote.fecha)}
           onClose={() => setAnimalModal({ open: false })}
           onOk={async (vals) => {
             await handleAnimalSave(vals)
@@ -1205,6 +1208,7 @@ export default function LoteDetalle() {
       {masivaModal && lote && (
         <CargaMasivaModal
           loteNombre={lote.nombre}
+          loteFecha={aInputDate(lote.fecha)}
           siguienteN={siguienteN}
           partidas={partidas}
           onClose={() => setMasivaModal(false)}
@@ -1654,12 +1658,14 @@ interface AnimalFormValues {
   idPartida?: number
   pesoInicial?: number
   observaciones?: string
+  fechaIngreso?: string
 }
 
 function AnimalModal({
   animal,
   siguienteN,
   partidas,
+  loteFecha,
   onClose,
   onOk,
 }: {
@@ -1667,14 +1673,26 @@ function AnimalModal({
   siguienteN: number
   /** Partidas del lote (para decidir nueva/unir al alta de un animal nuevo). */
   partidas: PartidaDto[]
+  /** Fecha del lote ('YYYY-MM-DD'): default y mínimo de la fecha de ingreso. */
+  loteFecha: string
   onClose: () => void
   onOk: (vals: AnimalFormValues) => Promise<void>
 }) {
+  const manana = useMemo(() => {
+    const d = new Date()
+    d.setDate(d.getDate() + 1)
+    const m = `${d.getMonth() + 1}`.padStart(2, '0')
+    const day = `${d.getDate()}`.padStart(2, '0')
+    return `${d.getFullYear()}-${m}-${day}`
+  }, [])
   const esEdicion = !!animal
   const [nAnimal, setNAnimal] = useState(
     animal?.nAnimal?.toString() ?? String(siguienteN),
   )
   const [caravana, setCaravana] = useState(animal?.caravana ?? '')
+  const [fechaIngreso, setFechaIngreso] = useState(
+    animal?.fechaIngreso?.slice(0, 10) ?? loteFecha,
+  )
   const [idRaza, setIdRaza] = useState<string | number>(animal?.idRaza ?? '')
   const [idCategoria, setIdCategoria] = useState<string | number>(animal?.idCategoria ?? '')
   const [idPelaje, setIdPelaje] = useState<string | number>(animal?.idPelaje ?? '')
@@ -1725,6 +1743,14 @@ function AnimalModal({
       setError('La partida elegida ya está pesada: indicá el peso inicial del animal.')
       return
     }
+    if (!fechaIngreso) {
+      setError('Indicá la fecha de ingreso del animal.')
+      return
+    }
+    if ((loteFecha && fechaIngreso < loteFecha) || fechaIngreso > manana) {
+      setError('La fecha de ingreso debe estar entre la fecha del lote y mañana.')
+      return
+    }
     setBusy(true)
     try {
       await onOk({
@@ -1741,6 +1767,7 @@ function AnimalModal({
             ...(requierePeso ? { pesoInicial: toNum(pesoInicial) } : {}),
           }),
         observaciones: observaciones.trim() || undefined,
+        fechaIngreso: fechaIngreso || undefined,
       })
     } catch (err) {
       console.error(err)
@@ -1814,6 +1841,18 @@ function AnimalModal({
 
         <div className="grid gap-3 sm:grid-cols-2">
           <PelajeSelect value={idPelaje} onChange={setIdPelaje} idRaza={idRaza} />
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-foreground">Fecha de ingreso *</label>
+            <input
+              type="date"
+              value={fechaIngreso}
+              min={loteFecha || undefined}
+              max={manana}
+              onChange={(e) => setFechaIngreso(e.target.value)}
+              className={inputCls}
+              title="Fecha en que el animal ingresó al lote (base para reconstruir presencia histórica)"
+            />
+          </div>
         </div>
 
         {/* Partida (sólo al alta y si el lote ya tiene animales pesados) */}

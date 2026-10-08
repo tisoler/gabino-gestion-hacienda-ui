@@ -72,16 +72,20 @@ El lint del UI usa `eslint.config.js` (sin autofix en el script). No `any` nuevo
     (`POST /lotes/:id/animales/masiva`). **Sólo la cantidad es requerida**; raza, categoría y
     pelaje son opcionales (se editan después por animal o en masa). Las **caravanas se
     precargan** como `{loteId}-{i}` (1,2,3… n) y son editables (override por animal). No carga
-    peso: los pesajes van en la sección de pesajes. **Partida**: la decide el **server**
+    peso: los pesajes van en la sección de pesajes. **Fecha de ingreso** (misma para la tanda,
+    default fecha del lote, entre fecha del lote y mañana): es la base para reconstruir
+    presencia histórica (alimentación). **Partida**: la decide el **server**
     (el FE no manda elección, sólo muestra el resultado): si hay una partida **abierta** (sin
     pesaje inicial) los nuevos se suman a ella; si no (todas pesadas o ninguna), crea una
     **nueva partida**.
-- **Edición en masa** (`components/EdicionMasivaModal.tsx`): raza/categoría/pelaje para los
+- **Edición en masa** (`components/EdicionMasivaModal.tsx`): raza/categoría/pelaje/fecha de
+  ingreso para los
   animales del **lote** o de una **partida** (`POST /lotes/:id/animales/edicion-masiva`). Arriba
   el alcance + los campos "aplicar a todos" (setean el valor en todos los del alcance); abajo el
   listado permite **ajustar cada animal** individualmente, con un **X para apartarlo** (no se
   modifica; se listan en "Apartados para después" y se pueden volver a incluir). Campo sin
-  cambio no se envía; limpiar una celda borra el valor (null).
+  cambio no se envía; limpiar una celda borra el valor (null, sólo catálogos: la fecha nunca
+  se borra, vacía = no cambia).
  9. **Ancho del layout**: `Layout.tsx` usa `w-[95%] max-w-[1800px]` sobre el área de contenido
     (ya descuenta el sidebar). Las secciones de filtro/alta de las páginas pueden acotarse
     (`max-w-2xl`), pero las tablas ocupan todo el ancho para evitar scroll horizontal.
@@ -192,7 +196,7 @@ El lint del UI usa `eslint.config.js` (sin autofix en el script). No `any` nuevo
   `lib/alimentacion.ts`): el modal de carga tiene el corral arriba y una **spreadsheet**
   (una fila por alimentación: Fecha, Dieta, Cantidad, Hora (def 09:00), Animales; tab por
   celda, Enter agrega fila debajo heredando; al pie, N + Agregar para sumar varias). La
-  fila nueva hereda fecha/cantidad/dieta de la anterior. Hora y Animales van en
+  fila nueva hereda fecha/dieta de la anterior (cantidad vacía). Hora y Animales van en
   `DetallePopover` (hora: atajos + time picker; animales: conteos por lote editables).
   Envía `POST /alimentaciones/masiva`; el
   server **reconstruye los animales del corral al instante fecha+hora de cada fila** (la cantidad

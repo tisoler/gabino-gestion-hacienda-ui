@@ -30,12 +30,13 @@ interface Fila {
 }
 
 let proxKey = 1
+// Nueva fila: hereda dieta/fecha/hora de la anterior, pero cantidad vacía.
 const nuevaFila = (prev?: Fila): Fila => ({
   key: proxKey++,
   idDieta: prev?.idDieta ?? '',
   fecha: prev?.fecha ?? hoyIso(),
   hora: prev?.hora ?? '09:00',
-  cantidad: prev?.cantidad ?? '',
+  cantidad: '',
   ajuste: null,
   ajusteCargando: false,
 })
@@ -143,7 +144,8 @@ export function AlimentarModal({
     }
   }
 
-  // Enter en una celda (input) agrega una fila debajo heredando de la actual.
+  // Enter en una celda (input) agrega una fila debajo heredando dieta/fecha/hora
+  // de la actual (cantidad vacía).
   // Se ignoran los Enter propios de los selects (ya preventDefault) y todo lo
   // que no sea un input (botones, popovers). En edición no agrega filas.
   const onFilaEnter = (e: KeyboardEvent, key: number) => {

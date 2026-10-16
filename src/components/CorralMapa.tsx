@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import useSWR, { useSWRConfig } from 'swr'
 import { Fence, Loader2, AlertCircle, Stethoscope, ChevronDown, ChevronsRight, ChevronsLeft, Utensils } from 'lucide-react'
 import api, { fetcher } from '../lib/api'
+import { revalidarBalances } from '../lib/balance'
 import { useAuth } from '../contexts/auth-context'
 import { CORRAL_TIPOS, ESTADO_ANIMAL_LABELS, getLoteColor } from '../constantes'
 import {
@@ -181,6 +182,7 @@ export function CorralMapa({
       setPendiente(null)
       await mutate('/corrales/mapa')
       await mutate(`/lotes/${item.loteId}`)
+      await revalidarBalances(mutate, item.loteId)
     } catch (err) {
       console.error(err)
       const msg =

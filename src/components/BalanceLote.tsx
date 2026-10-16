@@ -1,10 +1,12 @@
-import { useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import useSWR, { useSWRConfig } from 'swr'
-import { Calculator, ChevronDown, Loader2, Receipt } from 'lucide-react'
+import { Calculator, ChevronDown, Loader2, Plus, Receipt } from 'lucide-react'
 import { fetcher } from '../lib/api'
+import { revalidarBalances } from '../lib/balance'
 import { useAuth } from '../contexts/auth-context'
 import { DetallePopover } from './DetallePopover'
 import { LiquidacionModal } from './LiquidacionModal'
+import { CostoAplicadoModal } from './CostoAplicadoModal'
 
 const fmtFecha = (f: string): string => {
   if (!f) return '—'
@@ -17,6 +19,22 @@ const hhmm = (h?: string | null): string => (h ? h.slice(0, 5) : '—')
 const fmtMoney = (n: number | null | undefined): string => {
   if (n == null || isNaN(Number(n))) return '—'
   return Number(n).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+interface InsumoLinea {
+  id: number | null
+  nombre: string
+  precio: number | null
+}
+
+interface AplicadoDetalle {
+  id: number
+  caravana: string | null
+  nombre: string
+  precioBase: number | null
+  costo: number
+  liquidada: boolean
+  insumos: InsumoLinea[]
 }
 
 interface BalanceAlimentacion {
@@ -40,19 +58,33 @@ interface BalanceTratamiento {
   caravana?: string | null
   nAnimales?: number
   animales?: { id: number; caravana: string | null }[]
+  precioBase: number | null
+  insumos: InsumoLinea[]
+  aplicados?: AplicadoDetalle[]
   costo: number
+  liquidada: boolean
+}
+
+interface BalanceCosto {
+  id: number
+  fecha: string
+  costoNombre: string
+  descripcion: string
+  monto: number
   liquidada: boolean
 }
 
 interface BalanceView {
   alimentaciones: BalanceAlimentacion[]
   tratamientos: BalanceTratamiento[]
+  costos: BalanceCosto[]
   totales: { total: number; liquidado: number; pendiente: number }
 }
 
 interface BalanceResumido {
   alimentacion: { liquidado: number; pendiente: number }
   tratamientos: { liquidado: number; pendiente: number }
+  costos: { liquidado: number; pendiente: number }
   totales: { total: number; liquidado: number; pendiente: number }
 }
 
@@ -155,7 +187,33 @@ function TablaDetalleAlimentacion({ rows }: { rows: BalanceAlimentacion[] }) {
   )
 }
 
+function LineasInsumos({ precioBase, insumos }: { precioBase: number | null; insumos: InsumoLinea[] }) {
+  return (
+    <div className="space-y-0.5 py-1">
+      <div className="flex items-center justify-between gap-2 text-xs">
+        <span className="text-muted-foreground">Tratamiento</span>
+        <span className="tabular-nums text-foreground">$ {fmtMoney(precioBase)}</span>
+      </div>
+      {insumos.map((i, idx) => (
+        <div key={i.id ?? idx} className="flex items-center justify-between gap-2 text-xs">
+          <span className="text-muted-foreground truncate">+ {i.nombre}</span>
+          <span className="tabular-nums text-foreground shrink-0">$ {fmtMoney(i.precio)}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function TablaDetalleTratamiento({ rows }: { rows: BalanceTratamiento[] }) {
+  const [expandidos, setExpandidos] = useState<Set<string>>(new Set())
+  const toggle = (key: string) =>
+    setExpandidos((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+
   if (rows.length === 0) {
     return <p className="text-xs text-muted-foreground">Sin tratamientos.</p>
   }
@@ -164,6 +222,7 @@ function TablaDetalleTratamiento({ rows }: { rows: BalanceTratamiento[] }) {
       <table className="w-full border-collapse">
         <thead>
           <tr className="border-b border-border">
+            <th className={thCls}></th>
             <th className={thCls}>Fecha / Hora</th>
             <th className={thCls}>Tratamiento</th>
             <th className={thCls}>Detalle</th>
@@ -172,50 +231,138 @@ function TablaDetalleTratamiento({ rows }: { rows: BalanceTratamiento[] }) {
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
-          {rows.map((t) => (
-            <tr key={`${t.kind}-${t.id}`}>
-              <td className={`${tdCls} whitespace-nowrap text-muted-foreground`}>
-                {fmtFecha(t.fecha)} · {hhmm(t.hora)}
-              </td>
-              <td className={tdCls}>
-                <span className="text-foreground">
-                  {t.nombres.join(' + ') || 'Tratamiento'}
-                  {t.kind === 'lote' && (
-                    <span className="ml-1.5 inline-flex text-[9px] font-semibold uppercase tracking-wide text-info bg-info-soft rounded-full px-1.5 py-0.5">
-                      Lote
+          {rows.map((t) => {
+            const key = `${t.kind}-${t.id}`
+            const abierto = expandidos.has(key)
+            return (
+              <Fragment key={key}>
+                <tr>
+                  <td className={tdCls}>
+                    <button
+                      onClick={() => toggle(key)}
+                      className="p-0.5 rounded text-muted-foreground hover:bg-accent cursor-pointer"
+                      title={abierto ? 'Ocultar insumos' : 'Ver insumos'}
+                    >
+                      <ChevronDown className={`size-4 transition-transform ${abierto ? '' : '-rotate-90'}`} strokeWidth={2} />
+                    </button>
+                  </td>
+                  <td className={`${tdCls} whitespace-nowrap text-muted-foreground`}>
+                    {fmtFecha(t.fecha)} · {hhmm(t.hora)}
+                  </td>
+                  <td className={tdCls}>
+                    <span className="text-foreground">
+                      {t.nombres.join(' + ') || 'Tratamiento'}
+                      {t.kind === 'lote' && (
+                        <span className="ml-1.5 inline-flex text-[9px] font-semibold uppercase tracking-wide text-info bg-info-soft rounded-full px-1.5 py-0.5">
+                          Lote
+                        </span>
+                      )}
                     </span>
-                  )}
-                </span>
-              </td>
-              <td className={tdCls}>
-                {t.kind === 'lote' ? (
-                  <DetallePopover
-                    etiqueta={`${t.nAnimales ?? 0} animales`}
-                    titulo="Animales alcanzados"
-                    ancho={280}
-                  >
-                    <div className="divide-y divide-border">
-                      {(t.animales ?? []).map((an) => (
-                        <div key={an.id} className="px-2 py-1.5 text-xs text-foreground">
-                          Car. {an.caravana ?? '—'}
+                  </td>
+                  <td className={tdCls}>
+                    {t.kind === 'lote' ? (
+                      <span className="text-muted-foreground">{t.nAnimales ?? 0} animales</span>
+                    ) : (
+                      <span className="text-muted-foreground">
+                        Car. {t.caravana ?? '—'} · Individual
+                      </span>
+                    )}
+                  </td>
+                  <td className={`${tdCls} tabular-nums text-foreground`}>$ {fmtMoney(t.costo)}</td>
+                  <td className={tdCls}>
+                    <EstadoBadge liquidada={t.liquidada} />
+                  </td>
+                </tr>
+                {abierto && (
+                  <tr>
+                    <td />
+                    <td colSpan={5} className="px-2 py-1 bg-muted/20">
+                      {t.kind === 'lote' ? (
+                        <div className="space-y-2 py-1">
+                          {(t.aplicados ?? []).map((ap) => (
+                            <div key={ap.id} className="border-l-2 border-border pl-2">
+                              <div className="flex items-center justify-between gap-2 text-xs">
+                                <span className="text-foreground truncate">
+                                  {ap.nombre}
+                                  {ap.caravana && (
+                                    <span className="ml-1.5 text-muted-foreground">Car. {ap.caravana}</span>
+                                  )}
+                                </span>
+                                <span className="tabular-nums text-foreground shrink-0">$ {fmtMoney(ap.costo)}</span>
+                              </div>
+                              <LineasInsumos precioBase={ap.precioBase} insumos={ap.insumos} />
+                            </div>
+                          ))}
                         </div>
-                      ))}
-                    </div>
-                  </DetallePopover>
-                ) : (
-                  <span className="text-muted-foreground">
-                    Car. {t.caravana ?? '—'} · Individual
-                  </span>
+                      ) : (
+                        <LineasInsumos precioBase={t.precioBase} insumos={t.insumos} />
+                      )}
+                    </td>
+                  </tr>
                 )}
-              </td>
-              <td className={`${tdCls} tabular-nums text-foreground`}>$ {fmtMoney(t.costo)}</td>
-              <td className={tdCls}>
-                <EstadoBadge liquidada={t.liquidada} />
-              </td>
-            </tr>
-          ))}
+              </Fragment>
+            )
+          })}
         </tbody>
       </table>
+    </div>
+  )
+}
+
+function TablaDetalleCostos({
+  rows,
+  puedeImputar,
+  onAgregar,
+}: {
+  rows: BalanceCosto[]
+  puedeImputar: boolean
+  onAgregar: () => void
+}) {
+  return (
+    <div className="space-y-2">
+      {rows.length === 0 ? (
+        <p className="text-xs text-muted-foreground">Sin costos varios.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse">
+            <thead>
+              <tr className="border-b border-border">
+                <th className={thCls}>Fecha</th>
+                <th className={thCls}>Costo</th>
+                <th className={thCls}>Monto</th>
+                <th className={thCls}>Estado</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {rows.map((c) => (
+                <tr key={c.id}>
+                  <td className={`${tdCls} whitespace-nowrap text-muted-foreground`}>
+                    {fmtFecha(c.fecha)}
+                  </td>
+                  <td className={tdCls}>
+                    <span className="text-foreground">{c.descripcion}</span>
+                    <span className="ml-1.5 text-xs text-muted-foreground">{c.costoNombre}</span>
+                  </td>
+                  <td className={`${tdCls} tabular-nums text-foreground`}>$ {fmtMoney(c.monto)}</td>
+                  <td className={tdCls}>
+                    <EstadoBadge liquidada={c.liquidada} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {puedeImputar && (
+        <div className="flex justify-end">
+          <button
+            onClick={onAgregar}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border border-border hover:bg-accent transition-colors cursor-pointer"
+          >
+            <Plus className="size-3.5" strokeWidth={2} /> Agregar costo
+          </button>
+        </div>
+      )}
     </div>
   )
 }
@@ -224,20 +371,23 @@ function TablaDetalleTratamiento({ rows }: { rows: BalanceTratamiento[] }) {
  * Balance económico del lote (colapsado por defecto): siempre la disposición
  * resumida (subtotales por rubro + totales). Con lectura:balance-lote, cada
  * rubro es clickeable y abre el detalle en un popover grande. Con
- * escritura:balance-lote hay botón para ingresar una liquidación.
+ * escritura:liquidacion hay botón para ingresar una liquidación; con
+ * escritura:balance-lote se pueden imputar costos varios.
  */
 export function BalanceLote({ loteId }: { loteId: number }) {
   const { permisos } = useAuth()
   // lectura:balance-lote se impone a base: con ambos se ve el detalle.
   const completo = permisos.includes('lectura:balance-lote')
   const puedeVer = completo || permisos.includes('lectura:balance-lote-base')
-  const puedeLiquidar = permisos.includes('escritura:balance-lote')
+  const puedeLiquidar = permisos.includes('escritura:liquidacion')
+  const puedeImputarCosto = permisos.includes('escritura:balance-lote')
   const [abierto, setAbierto] = useState(false)
   const [liquidando, setLiquidando] = useState(false)
+  const [imputandoCosto, setImputandoCosto] = useState(false)
   const { mutate: mutateGlobal } = useSWRConfig()
 
   const balanceKey = puedeVer && abierto ? `/lotes/${loteId}/balance` : null
-  const { data: balance, isLoading, mutate } = useSWR<BalanceView | BalanceResumido>(
+  const { data: balance, isLoading } = useSWR<BalanceView | BalanceResumido>(
     balanceKey,
     fetcher,
     { revalidateOnFocus: false },
@@ -248,24 +398,33 @@ export function BalanceLote({ loteId }: { loteId: number }) {
     if ('alimentaciones' in balance) {
       const al = balance.alimentaciones
       const tr = balance.tratamientos
+      const co = balance.costos ?? []
       const suma = (xs: { liquidada: boolean; costo: number }[], liq: boolean) =>
         xs.filter((x) => (x.liquidada ?? false) === liq).reduce((acc, x) => acc + x.costo, 0)
+      const sumaMonto = (xs: { liquidada: boolean; monto: number }[], liq: boolean) =>
+        xs.filter((x) => (x.liquidada ?? false) === liq).reduce((acc, x) => acc + x.monto, 0)
       return {
         alimentacion: { liquidado: suma(al, true), pendiente: suma(al, false) },
         tratamientos: { liquidado: suma(tr, true), pendiente: suma(tr, false) },
+        costos: { liquidado: sumaMonto(co, true), pendiente: sumaMonto(co, false) },
         totales: balance.totales,
-        detalle: { alimentaciones: al, tratamientos: tr },
+        detalle: { alimentaciones: al, tratamientos: tr, costos: co },
       }
     }
     return {
       alimentacion: balance.alimentacion,
       tratamientos: balance.tratamientos,
+      costos: balance.costos,
       totales: balance.totales,
       detalle: null,
     }
   }, [balance])
 
   if (!puedeVer) return null
+
+  const recargar = async () => {
+    await revalidarBalances(mutateGlobal, loteId)
+  }
 
   const cajaAlimentacion = vista && (
     <ContenidoCaja
@@ -280,6 +439,14 @@ export function BalanceLote({ loteId }: { loteId: number }) {
       titulo="Tratamientos"
       liquidado={vista.tratamientos.liquidado}
       pendiente={vista.tratamientos.pendiente}
+      conDetalle={completo}
+    />
+  )
+  const cajaCostos = vista && (
+    <ContenidoCaja
+      titulo="Costos varios"
+      liquidado={vista.costos.liquidado}
+      pendiente={vista.costos.pendiente}
       conDetalle={completo}
     />
   )
@@ -339,7 +506,7 @@ export function BalanceLote({ loteId }: { loteId: number }) {
             </div>
           ) : (
             <>
-              <div className="grid gap-2 sm:grid-cols-2">
+              <div className="grid gap-2 sm:grid-cols-3">
                 {completo && vista.detalle ? (
                   <>
                     <DetallePopover
@@ -358,11 +525,24 @@ export function BalanceLote({ loteId }: { loteId: number }) {
                     >
                       <TablaDetalleTratamiento rows={vista.detalle.tratamientos} />
                     </DetallePopover>
+                    <DetallePopover
+                      etiqueta={cajaCostos}
+                      titulo="Costos varios"
+                      ancho={640}
+                      classNameBoton={`${CLASES_CAJA} hover:border-primary/60`}
+                    >
+                      <TablaDetalleCostos
+                        rows={vista.detalle.costos}
+                        puedeImputar={puedeImputarCosto}
+                        onAgregar={() => setImputandoCosto(true)}
+                      />
+                    </DetallePopover>
                   </>
                 ) : (
                   <>
                     <div className={CLASES_CAJA_ESTATICA}>{cajaAlimentacion}</div>
                     <div className={CLASES_CAJA_ESTATICA}>{cajaTratamientos}</div>
+                    <div className={CLASES_CAJA_ESTATICA}>{cajaCostos}</div>
                   </>
                 )}
               </div>
@@ -389,10 +569,15 @@ export function BalanceLote({ loteId }: { loteId: number }) {
         <LiquidacionModal
           loteId={loteId}
           onClose={() => setLiquidando(false)}
-          onGuardado={async () => {
-            await mutate()
-            await mutateGlobal('/lotes/balances')
-          }}
+          onGuardado={recargar}
+        />
+      )}
+
+      {imputandoCosto && (
+        <CostoAplicadoModal
+          loteId={loteId}
+          onClose={() => setImputandoCosto(false)}
+          onGuardado={recargar}
         />
       )}
     </section>

@@ -13,6 +13,7 @@ import {
   PowerOff,
 } from 'lucide-react'
 import api, { fetcher } from '../lib/api'
+import { revalidarBalances } from '../lib/balance'
 import { useAuth } from '../contexts/auth-context'
 import { Table } from '../components/Table'
 import SelectAutocomplete from '../components/SelectAutocomplete'
@@ -71,6 +72,8 @@ export default function Tratamientos() {
       await api.post('/tratamientos', vals)
     }
     await mutate(listKey)
+    // Los precios de referencia alimentan los pendientes del balance.
+    await revalidarBalances(mutate)
   }
 
   const handleToggleActivo = async (t: TratamientoView) => {

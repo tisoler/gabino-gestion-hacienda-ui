@@ -4,6 +4,7 @@ import useSWR, { useSWRConfig } from 'swr'
 import { useNavigate } from 'react-router-dom'
 import { Plus, Loader2, Stethoscope, Utensils } from 'lucide-react'
 import { fetcher } from '../lib/api'
+import { revalidarBalances } from '../lib/balance'
 import { useAuth } from '../contexts/auth-context'
 import { Table } from '../components/Table'
 import { CorralMapa } from '../components/CorralMapa'
@@ -259,6 +260,7 @@ export default function Lotes() {
               undefined,
               { revalidate: true },
             )
+            await revalidarBalances(mutate)
           }}
         />
       )}
@@ -270,6 +272,7 @@ export default function Lotes() {
           onClose={() => setTratarLote(null)}
           onGuardado={async () => {
             await mutate('/lotes')
+            await revalidarBalances(mutate, tratarLote.id)
           }}
         />
       )}

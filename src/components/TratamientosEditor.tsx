@@ -3,7 +3,6 @@ import useSWR from 'swr'
 import { Loader2, Plus, Trash2 } from 'lucide-react'
 import { fetcher } from '../lib/api'
 import SelectAutocomplete, { type SelectAutocompleteOption } from './SelectAutocomplete'
-import { NumeroInput } from './NumeroInput'
 import { TratamientoModal, type TratamientoFormValues } from './TratamientoModal'
 import { InsumoModal, type InsumoFormValues } from './InsumoModal'
 import type { TratamientoPayload } from '../lib/veterinaria'
@@ -44,31 +43,19 @@ interface FilaInsumo {
   key: number
   idRegistro?: number
   selInsumo: string | number
-  precio: string
 }
 
 interface FilaTratamiento {
   key: number
   idRegistro?: number
   selTratamiento: string | number
-  precio: string
   insumos: FilaInsumo[]
 }
-
-const toNum = (s: string): number | null => {
-  if (!s.trim()) return null
-  const n = parseFloat(s.replace(',', '.'))
-  return isNaN(n) || n < 0 ? null : Math.round(n * 100) / 100
-}
-
-const fmtRef = (p: number | string | null | undefined): string =>
-  p == null || p === '' ? '' : String(p)
 
 const bloqueVacio = (key: number): FilaTratamiento => ({
   key,
   selTratamiento: '',
-  precio: '',
-  insumos: [{ key: 1, selInsumo: '', precio: '' }],
+  insumos: [{ key: 1, selInsumo: '' }],
 })
 
 /**
@@ -78,6 +65,8 @@ const bloqueVacio = (key: number): FilaTratamiento => ({
  * de referencia, unidad) y queda como temporal con sus valores; el server
  * lo persiste al guardar, con la empresa del lote y bajo
  * escritura:veterinaria (sin pedir escritura:insumo, igual que en dietas).
+ * Los precios se muestran como REFERENCIA de sólo lectura (se congelan al
+ * liquidar, no al aplicar): el payload lleva `precio: null`.
  * Emite el payload resuelto en cada cambio.
  */
 export function TratamientosEditor({
@@ -93,12 +82,10 @@ export function TratamientosEditor({
           key: idx + 1,
           idRegistro: b.idRegistro,
           selTratamiento: b.idTratamiento ?? '',
-          precio: b.precio != null ? String(b.precio) : '',
           insumos: (b.insumos?.length ? b.insumos : [{}]).map((ins, j) => ({
             key: j + 1,
             idRegistro: ins.idRegistro,
             selInsumo: ins.idInsumo ?? '',
-            precio: ins.precio != null ? String(ins.precio) : '',
           })),
         }))
       : [bloqueVacio(1)],
@@ -138,6 +125,34 @@ export function TratamientosEditor({
   const refTrat = (id: number) => (tratamientos ?? []).find((t) => t.id === id)?.precioReferencia
   const refIns = (id: number) => (insumos ?? []).find((i) => i.id === id)?.precioReferencia
 
+  /** Referencia viva del tratamiento seleccionado (sólo lectura). */
+  const refTratSel = (f: FilaTratamiento): string => {
+    const num = Number(f.selTratamiento)
+    if (f.selTratamiento !== '' && num < 0) {
+      const t = nuevosTrat.find((n) => n.tempId === num)?.vals
+      return t?.precioReferencia != null ? String(t.precioReferencia) : ''
+    }
+    if (num > 0) {
+      const r = refTrat(num)
+      return r != null && r !== '' ? String(r) : ''
+    }
+    return ''
+  }
+
+  /** Referencia viva del insumo seleccionado (sólo lectura). */
+  const refInsSel = (sel: string | number): string => {
+    const num = Number(sel)
+    if (sel !== '' && num < 0) {
+      const t = nuevosIns.find((n) => n.tempId === num)?.vals
+      return t?.precioReferencia != null ? String(t.precioReferencia) : ''
+    }
+    if (num > 0) {
+      const r = refIns(num)
+      return r != null && r !== '' ? String(r) : ''
+    }
+    return ''
+  }
+
   // Emite el payload resuelto (valores completos para los temporales).
   useEffect(() => {
     const payload: TratamientoPayload[] = filas.map((f) => {
@@ -157,7 +172,7 @@ export function TratamientosEditor({
                 ...(tNuevo.precioReferencia != null ? { precioReferencia: tNuevo.precioReferencia } : {}),
               }
             : { idTratamiento: vT }),
-        precio: toNum(f.precio),
+        precio: null,
         insumos: f.insumos.map((ins) => {
           const vI = Number(ins.selInsumo)
           const iNuevo =
@@ -177,7 +192,7 @@ export function TratamientosEditor({
                     ...(iNuevo.idCategoria != null ? { idCategoria: iNuevo.idCategoria } : {}),
                   }
                 : { idInsumo: vI }),
-            precio: toNum(ins.precio),
+            precio: null,
           }
         }),
       }
@@ -211,7 +226,7 @@ export function TratamientosEditor({
     setSigueIns((s) => s + 1)
     setFilas((fs) =>
       fs.map((f) =>
-        f.key === key ? { ...f, insumos: [...f.insumos, { key: insKey, selInsumo: '', precio: '' }] } : f,
+        f.key === key ? { ...f, insumos: [...f.insumos, { key: insKey, selInsumo: '' }] } : f,
       ),
     )
   }
@@ -245,13 +260,7 @@ export function TratamientosEditor({
     const tempId = -Date.now()
     // Mapa y selección en el mismo bloque: sin cadena async intermedia.
     setNuevosTrat((prev) => [...prev, { tempId, vals }])
-    const fila = filas.find((f) => f.key === filaKey)
-    setFila(filaKey, {
-      selTratamiento: tempId,
-      ...(!fila?.precio && vals.precioReferencia != null
-        ? { precio: String(vals.precioReferencia) }
-        : {}),
-    })
+    setFila(filaKey, { selTratamiento: tempId })
     setCreandoTrat(null)
   }
 
@@ -260,14 +269,7 @@ export function TratamientosEditor({
     const { filaKey, insKey } = creandoIns
     const tempId = -Date.now() - 1
     setNuevosIns((prev) => [...prev, { tempId, vals }])
-    const fila = filas.find((f) => f.key === filaKey)
-    const ins = fila?.insumos.find((i) => i.key === insKey)
-    setIns(filaKey, insKey, {
-      selInsumo: tempId,
-      ...(!ins?.precio && vals.precioReferencia != null
-        ? { precio: String(vals.precioReferencia) }
-        : {}),
-    })
+    setIns(filaKey, insKey, { selInsumo: tempId })
     setCreandoIns(null)
   }
 
@@ -297,15 +299,7 @@ export function TratamientosEditor({
                 <SelectAutocomplete
                   placeholder="Tratamiento (ej: Antibiótico)..."
                   value={f.selTratamiento}
-                  onChange={(v) => {
-                    const patch: Partial<FilaTratamiento> = { selTratamiento: v }
-                    const num = Number(v)
-                    if (v !== '' && num > 0 && !f.precio) {
-                      const ref = refTrat(num)
-                      if (ref != null && ref !== '') patch.precio = fmtRef(ref)
-                    }
-                    setFila(f.key, patch)
-                  }}
+                  onChange={(v) => setFila(f.key, { selTratamiento: v })}
                   options={optsTrat}
                   allowCreate
                   onCreate={(txt) => crearTrat(txt, f.key)}
@@ -328,15 +322,12 @@ export function TratamientosEditor({
                   emptyMessage="No encontrado. Escribí para agregar."
                 />
               </div>
-              <NumeroInput
-                min={0}
-                step="0.01"
-                value={f.precio}
-                onChange={(v) => setFila(f.key, { precio: v })}
-                className={`${inputCls} w-28 shrink-0`}
-                placeholder="Precio"
-                title="Precio del tratamiento (default: referencia)"
-              />
+              <span
+                title="Precio de referencia (se congela al liquidar, no se edita acá)"
+                className={`${inputCls} w-28 shrink-0 block truncate tabular-nums text-muted-foreground bg-muted/40 cursor-default`}
+              >
+                {refTratSel(f) || '—'}
+              </span>
             </div>
             <div className="space-y-2 pl-1">
               {f.insumos.map((ins) => (
@@ -345,15 +336,7 @@ export function TratamientosEditor({
                     <SelectAutocomplete
                       placeholder="Insumo (ej: Oxitetraciclina)..."
                       value={ins.selInsumo}
-                      onChange={(v) => {
-                        const patch: Partial<FilaInsumo> = { selInsumo: v }
-                        const num = Number(v)
-                        if (v !== '' && num > 0 && !ins.precio) {
-                          const ref = refIns(num)
-                          if (ref != null && ref !== '') patch.precio = fmtRef(ref)
-                        }
-                        setIns(f.key, ins.key, patch)
-                      }}
+                      onChange={(v) => setIns(f.key, ins.key, { selInsumo: v })}
                       options={opcionesIns}
                       allowCreate
                       onCreate={(txt) => crearIns(txt, f.key, ins.key)}
@@ -376,15 +359,12 @@ export function TratamientosEditor({
                       emptyMessage="No encontrado. Escribí para agregar."
                     />
                   </div>
-                  <NumeroInput
-                    min={0}
-                    step="0.01"
-                    value={ins.precio}
-                    onChange={(v) => setIns(f.key, ins.key, { precio: v })}
-                    className={`${inputCls} w-28 shrink-0`}
-                    placeholder="Precio"
-                    title="Precio del insumo (default: referencia)"
-                  />
+                  <span
+                    title="Precio de referencia (se congela al liquidar, no se edita acá)"
+                    className={`${inputCls} w-28 shrink-0 block truncate tabular-nums text-muted-foreground bg-muted/40 cursor-default`}
+                  >
+                    {refInsSel(ins.selInsumo) || '—'}
+                  </span>
                   <button
                     onClick={() => quitarInsumo(f.key, ins.key)}
                     title="Quitar insumo"

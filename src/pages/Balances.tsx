@@ -25,6 +25,7 @@ interface BalanceLoteResumen {
   desglose?: {
     alimentacion: { liquidado: number; pendiente: number }
     tratamientos: { liquidado: number; pendiente: number }
+    costos: { liquidado: number; pendiente: number }
   }
 }
 
@@ -105,7 +106,7 @@ export default function Balances() {
         </div>
       ) : grupos.length === 0 ? (
         <div className="bg-card border border-border rounded-lg p-8 text-center">
-          <p className="text-sm text-muted-foreground">Todavía no hay lotes con movimientos para balancear.</p>
+          <p className="text-sm text-muted-foreground">Todavía no hay lotes con balances.</p>
         </div>
       ) : (
         <>
@@ -222,6 +223,18 @@ export default function Balances() {
                             header: 'Trat. pend.',
                             accessor: (l) => (
                               <span className="text-foreground tabular-nums">$ {fmtMoney(l.desglose?.tratamientos.pendiente)}</span>
+                            ),
+                          },
+                          {
+                            header: 'Costos liq.',
+                            accessor: (l) => (
+                              <span className="text-muted-foreground tabular-nums">$ {fmtMoney(l.desglose?.costos.liquidado)}</span>
+                            ),
+                          },
+                          {
+                            header: 'Costos pend.',
+                            accessor: (l) => (
+                              <span className="text-foreground tabular-nums">$ {fmtMoney(l.desglose?.costos.pendiente)}</span>
                             ),
                           },
                         ]

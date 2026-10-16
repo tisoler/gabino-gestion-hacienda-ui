@@ -10,6 +10,7 @@ import {
   X,
 } from 'lucide-react'
 import api, { fetcher } from '../lib/api'
+import { revalidarBalances } from '../lib/balance'
 import CatalogoSelect from './CatalogoSelect'
 import { AtajosHora } from './AtajosHora'
 import {
@@ -640,7 +641,7 @@ export function MovimientosModal({
             })
             setAgregando(false)
             await mutate()
-            await mutateGlobal(`/lotes/${loteId}/balance`)
+            await revalidarBalances(mutateGlobal, loteId)
           }}
         />
       )}

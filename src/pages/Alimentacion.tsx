@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import useSWR from 'swr'
+import useSWR, { useSWRConfig } from 'swr'
 import { AlertCircle, Loader2, Lock, Pencil, Trash2, Utensils } from 'lucide-react'
 import api, { fetcher } from '../lib/api'
+import { revalidarBalances } from '../lib/balance'
 import { useAuth } from '../contexts/auth-context'
 import SelectAutocomplete from '../components/SelectAutocomplete'
 import { Table } from '../components/Table'
@@ -60,6 +61,7 @@ export default function Alimentacion() {
 
   const [editando, setEditando] = useState<AlimentacionView | null>(null)
   const [alimentarOpen, setAlimentarOpen] = useState(false)
+  const { mutate: mutateGlobal } = useSWRConfig()
   const [eliminandoId, setEliminandoId] = useState<number | null>(null)
   const [error, setError] = useState('')
 
@@ -118,6 +120,7 @@ export default function Alimentacion() {
     try {
       await api.delete(`/alimentaciones/${a.id}`)
       await mutateAlimentaciones()
+      await revalidarBalances(mutateGlobal)
     } catch (err) {
       console.error(err)
       setError(extractMsg(err, 'No se pudo eliminar la alimentación.'))
@@ -501,6 +504,7 @@ export default function Alimentacion() {
           onClose={() => setAlimentarOpen(false)}
           onSaved={async () => {
             await mutateAlimentaciones()
+            await revalidarBalances(mutateGlobal)
           }}
         />
       )}
@@ -520,6 +524,7 @@ export default function Alimentacion() {
           onClose={() => setEditando(null)}
           onSaved={async () => {
             await mutateAlimentaciones()
+            await revalidarBalances(mutateGlobal)
           }}
         />
       )}

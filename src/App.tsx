@@ -14,8 +14,10 @@ import Dietas from './pages/Dietas'
 import Alimentacion from './pages/Alimentacion'
 import Salidas from './pages/Salidas'
 import Balances from './pages/Balances'
+import Liquidaciones from './pages/Liquidaciones'
 import Insumos from './pages/Insumos'
 import Tratamientos from './pages/Tratamientos'
+import Costos from './pages/Costos'
 import CatalogoAdmin from './pages/CatalogoAdmin'
 import Usuarios from './pages/Usuarios'
 import Configuracion from './pages/Configuracion'
@@ -41,8 +43,10 @@ function App() {
                 <Route path="/alimentacion" element={<Alimentacion />} />
                 <Route path="/salidas" element={<Salidas />} />
                 <Route path="/balances" element={<Balances />} />
+                <Route path="/liquidaciones" element={<Liquidaciones />} />
                 <Route path="/insumos" element={<Insumos />} />
                 <Route path="/tratamientos" element={<Tratamientos />} />
+                <Route path="/costos" element={<Costos />} />
                 <Route
                   path="/animales/razas"
                   element={<CatalogoAdmin tipo="raza" titulo="Razas de animales" nombreValor="raza" />}

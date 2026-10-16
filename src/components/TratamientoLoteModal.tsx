@@ -116,6 +116,9 @@ export function TratamientoLoteModal({
           </div>
         </div>
 
+        <p className="text-[11px] text-muted-foreground mb-1 font-bold italic">
+          Los precios mostrados son de referencia; los definitivos se cargan en la liquidación.
+        </p>
         <TratamientosEditor onChange={setTratPayload} />
 
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}

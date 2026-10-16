@@ -31,8 +31,12 @@ El lint del UI usa `eslint.config.js` (sin autofix en el script). No `any` nuevo
 3. **SWR**: listas pesadas con `revalidateOnFocus: false`. Refetchear con `mutate()` tras
    crear/editar/vincular. Tras `POST /empresas`: `refetchUser()` (del AuthContext) +
    `mutate('/empresas')` + `mutate('/empresas/me', empresaCreada, { revalidate: false })`
-   (sembrar la cache con la empresa que devuelve el POST para pasar de "crear" a "editar"
-   sin depender del timing del refetch).
+  (sembrar la cache con la empresa que devuelve el POST para pasar de "crear" a "editar"
+  sin depender del timing del refetch). Todo cambio que afecta costos del balance
+  (alimentar/editar/eliminar alimentación, tratar, liquidar, imputar costos, precios de
+  referencia de insumos/tratamientos/costos, versionar dietas) llama a
+  `revalidarBalances(mutateGlobal, loteId?)` (`src/lib/balance.ts`: detalle del lote si se
+  indica + siempre `/lotes/balances`).
 4. **Formulario remontable**: los formularios sincronizados con un recurso cargado usan
    `key={...}` para remontar el componente (evitar setState-en-effect/anti-patterns).
 5. **Tema**: paleta marrón en `src/index.css` (tokens oklch). No hardcodear colores fuera de
@@ -51,7 +55,8 @@ El lint del UI usa `eslint.config.js` (sin autofix en el script). No `any` nuevo
     del mapa o botón de reloj junto al estado): timeline combinado movimientos + tratamientos
     (sin insumos), con botón + para directos. Con `escritura:veterinaria`, los modales de
     enfermería agregan la sección opcional de tratamientos (`TratamientosEditor`: N
-    tratamientos × M insumos con precio editable default referencia; crear uno nuevo abre el
+    tratamientos × M insumos con precio de referencia sólo-lectura (se congela al liquidar);
+    crear uno nuevo abre el
     modal (`TratamientoModal` / `InsumoModal` con categoría Veterinaria fija) que recolecta
     todos los campos y el server lo persiste al guardar, sin pedir escritura:insumo; al traer
     se precargan los del envío).
@@ -254,10 +259,15 @@ además ve "Mis lotes", sin columna Cliente y con el panel de corrales más ango
 `/lotes/nueva|:id` (detalle: corral/color/proveedor/lugar de origen + titular (cliente o
 anfitrión) + tabla de animales con raza/categoría, toggle de estado Sano/Enfermo/Muerto, enfermería
 y botón de historial de movimientos; sección Pesajes colapsada por defecto + sección
-Balance económico colapsada (`components/BalanceLote.tsx`: siempre resumido por rubro;
-con `lectura:balance-lote` cada rubro abre su detalle en popover grande y hay botón
-Liquidar (`components/LiquidacionModal.tsx`: date picker + checks preseleccionados hasta
-la fecha, `escritura:balance-lote`); el cliente lo ve en modo SÓLO LECTURA) ·
+Balance económico colapsada (`components/BalanceLote.tsx`: siempre resumido por rubro —
+Alimentación, Tratamientos, Costos varios;
+con `lectura:balance-lote` cada rubro abre su detalle en popover grande (tratamientos
+expandibles a base + insumos) y hay botón
+Liquidar (`components/LiquidacionModal.tsx`: date picker + pendientes con precios editables
+—$/kg, base e insumos, montos— con check Todos por sección + costos pendientes + alta de
+costos on-the-fly con `CostoModal` (nacen liquidados y bloqueados, con fecha y monto
+editables en la fila), `escritura:liquidacion`; con `escritura:balance-lote` se imputan
+costos pendientes desde el detalle (`CostoAplicadoModal`)); el cliente lo ve en modo SÓLO LECTURA) ·
 `/corrales` (alta/edición/deshabilitar; con `lectura:corral`, **oculta al cliente** vía
 `ocultarParaCliente` en el Sidebar) · `/animales/razas` y `/animales/categorias` (sys-admin,
 submenú "Animales" en el Sidebar) · `/dietas` (módulo de alimentación: lista de dietas +
@@ -269,7 +279,9 @@ cliente/corral/lote/partida/fechas y la diferencia de peso del grupo; `lectura:s
 `escritura:salida` registra desde la sección Pesajes del lote) · `/balances` (resumen de
 costos por lote agrupado por cliente —por empresa si es cliente—, con totales;
 `lectura:balance-lote`, o `lectura:balance-lote-base` para el resumido por rubro;
-rol `cliente-base` = cliente + base) · `/insumos` (catálogo de
+rol `cliente-base` = cliente + base) · `/liquidaciones` (liquidaciones por lote con filtros
+cliente/lote/rango + detalle de líneas congeladas en popover; `lectura:liquidacion` ve en
+sólo-lectura —la creación es sólo desde el balance—) · `/insumos` (catálogo de
 insumos con precio de referencia, filtro de alcance Todas/Global/Por empresa y modal de
 alta/edición estilo Corrales (`components/InsumoModal.tsx`, reutilizado por el alta
 on-the-fly en dietas con `nombreInicial`/`categoriaFija`/`alcanceFijo`); `lectura:insumo`
@@ -278,7 +290,10 @@ con `SelectAutocomplete` + alta local) · `/tratamientos` (catálogo veterinario
 de referencia, filtro de alcance y modal estilo Corrales; `lectura:veterinaria` ve activos,
 `escritura:veterinaria` gestiona y aplica tratamientos: sección opcional en los modales de
 enfermería, botón + en el historial para directos, y botón en `/lotes` + `/lotes/:id` para
-masivos al lote) · `/usuarios` (sys-admin, asignar roles) ·
+masivos al lote) · `/costos` (catálogo de costos varios, espejo de tratamientos:
+`components/CostoModal.tsx`, `lectura:costo` ve activos, `escritura:costo` gestiona; se
+imputan a lotes desde el balance o inline al liquidar con autocomplete + alta on-the-fly) ·
+`/usuarios` (sys-admin, asignar roles) ·
 `/configuracion` (sys-admin, limpiar caché)
 
 **Cliente**: el **mapa de Lotes** (`/corrales/mapa`) usa `lectura:lote` y el server lo filtra a

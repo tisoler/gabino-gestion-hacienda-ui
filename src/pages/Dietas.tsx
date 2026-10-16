@@ -2,6 +2,7 @@ import { useState } from 'react'
 import useSWR, { useSWRConfig } from 'swr'
 import { AlertCircle, Loader2, Plus, Power, PowerOff, History, X } from 'lucide-react'
 import api, { fetcher } from '../lib/api'
+import { revalidarBalances } from '../lib/balance'
 import { useAuth } from '../contexts/auth-context'
 import { DietaFormModal } from '../components/DietaFormModal'
 import { CalculadoraDietas } from '../components/CalculadoraDietas'
@@ -204,6 +205,8 @@ export default function Dietas() {
           onClose={() => setFormOpen(false)}
           onOk={async () => {
             await mutate(listKey)
+            // Una versión nueva cambia el $/kg de referencia de los pendientes.
+            await revalidarBalances(mutate)
           }}
         />
       )}

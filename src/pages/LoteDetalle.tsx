@@ -65,6 +65,7 @@ import { TratamientoLoteModal } from '../components/TratamientoLoteModal'
 import { BalanceLote } from '../components/BalanceLote'
 import { NumeroInput } from '../components/NumeroInput'
 import { aTratamientosDto } from '../lib/veterinaria'
+import { revalidarBalances } from '../lib/balance'
 import {
   CORRAL_TIPOS,
   ESTADO_ANIMAL_LABELS,
@@ -632,7 +633,7 @@ export default function LoteDetalle() {
       setEnviarModal(null)
       await mutateLote()
       await mutate('/corrales/mapa')
-      await mutate(`/lotes/${lote.id}/balance`)
+      await revalidarBalances(mutate, lote.id)
     } catch (err) {
       console.error(err)
       setError(extractMsg(err, 'No se pudo enviar a enfermería.'))
@@ -662,7 +663,7 @@ export default function LoteDetalle() {
       setTraerModal(null)
       await mutateLote()
       await mutate('/corrales/mapa')
-      await mutate(`/lotes/${lote.id}/balance`)
+      await revalidarBalances(mutate, lote.id)
     } catch (err) {
       console.error(err)
       setError(extractMsg(err, 'No se pudo traer de enfermería.'))
@@ -1277,7 +1278,7 @@ export default function LoteDetalle() {
           onClose={() => setTratarLoteModal(false)}
           onGuardado={async () => {
             await mutateLote()
-            await mutate(`/lotes/${lote.id}/balance`)
+            await revalidarBalances(mutate, lote.id)
           }}
         />
       )}

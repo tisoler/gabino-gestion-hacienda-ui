@@ -106,6 +106,9 @@ export default function SelectAutocomplete({
 
   const handleCreate = async () => {
     if (!onCreate || !busqueda || creating) return
+    // Cerrar el dropdown antes de abrir el modal de alta: el portal quedaría
+    // por encima del blur del modal anidado y se vería recortado.
+    setOpen(false)
     setCreating(true)
     setCreateError('')
     try {
@@ -186,7 +189,7 @@ export default function SelectAutocomplete({
     ? createPortal(
         <div
           ref={listRef}
-          style={{ position: 'fixed', top: pos.top, left: pos.left, width: pos.width, zIndex: 9999 }}
+          style={{ position: 'fixed', top: pos.top, left: pos.left, width: pos.width, zIndex: 60 }}
           className="bg-card border border-border rounded-md shadow-lg overflow-hidden"
         >
           <div className="flex items-center gap-2 px-2.5 py-2 border-b border-border">

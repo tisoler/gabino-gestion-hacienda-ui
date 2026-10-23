@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import useSWR, { useSWRConfig } from 'swr'
-import { AlertCircle, Loader2, Lock, Pencil, Trash2, Utensils } from 'lucide-react'
+import { AlertCircle, FileSpreadsheet, Loader2, Lock, Pencil, ScanLine, Trash2, Utensils } from 'lucide-react'
 import api, { fetcher } from '../lib/api'
 import { revalidarBalances } from '../lib/balance'
 import { useAuth } from '../contexts/auth-context'
@@ -9,6 +9,8 @@ import SelectAutocomplete from '../components/SelectAutocomplete'
 import { Table } from '../components/Table'
 import { DetallePopover } from '../components/DetallePopover'
 import { AlimentarModal } from '../components/AlimentarModal'
+import { ImportarPlanillaModal } from '../components/ImportarPlanillaModal'
+import { ImportarExcelModal } from '../components/ImportarExcelModal'
 import type { AlimentacionView } from '../lib/alimentacion'
 
 const fmtKg = (n: number): string => n.toLocaleString('es-AR', { maximumFractionDigits: 2 })
@@ -61,6 +63,8 @@ export default function Alimentacion() {
 
   const [editando, setEditando] = useState<AlimentacionView | null>(null)
   const [alimentarOpen, setAlimentarOpen] = useState(false)
+  const [importarOpen, setImportarOpen] = useState(false)
+  const [importarXlsxOpen, setImportarXlsxOpen] = useState(false)
   const { mutate: mutateGlobal } = useSWRConfig()
   const [eliminandoId, setEliminandoId] = useState<number | null>(null)
   const [error, setError] = useState('')
@@ -149,12 +153,26 @@ export default function Alimentacion() {
           </p>
         </div>
         {puedeEditar && (
-          <button
-            onClick={() => setAlimentarOpen(true)}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium border border-border hover:bg-accent transition-colors cursor-pointer"
-          >
-            <Utensils className="size-4" strokeWidth={2} /> Alimentar
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setImportarOpen(true)}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium border border-border hover:bg-accent transition-colors cursor-pointer"
+            >
+              <ScanLine className="size-4" strokeWidth={2} /> Importar planilla
+            </button>
+            <button
+              onClick={() => setImportarXlsxOpen(true)}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium border border-border hover:bg-accent transition-colors cursor-pointer"
+            >
+              <FileSpreadsheet className="size-4" strokeWidth={2} /> Importar Excel
+            </button>
+            <button
+              onClick={() => setAlimentarOpen(true)}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium border border-border hover:bg-accent transition-colors cursor-pointer"
+            >
+              <Utensils className="size-4" strokeWidth={2} /> Alimentar
+            </button>
+          </div>
         )}
       </div>
 
@@ -508,6 +526,10 @@ export default function Alimentacion() {
           }}
         />
       )}
+
+      {importarOpen && <ImportarPlanillaModal onClose={() => setImportarOpen(false)} />}
+
+      {importarXlsxOpen && <ImportarExcelModal onClose={() => setImportarXlsxOpen(false)} />}
 
       {editando && (
         <AlimentarModal

@@ -215,6 +215,19 @@ El lint del UI usa `eslint.config.js` (sin autofix en el script). No `any` nuevo
   instante no se puede guardar (ni recalculados ni editados a 0).
   El
   histórico muestra el desglose corral/enfermería (kg y nº de animales) por evento y por lote.
+  Botón "Importar planilla" (fotos o PDFs escaneados → `components/ImportarPlanillaModal.tsx`,
+  OCR RapidOCR, `POST /alimentaciones/importar-ocr`; cada página del PDF vuelve como un
+  item "archivo · pág. N")
+  y botón "Importar Excel" (`components/ImportarExcelModal.tsx`: sube el .xlsx, elige hojas
+  (con check "Todas") y agrega sus filas al preview; `POST /alimentaciones/importar-xlsx`):
+  preview editable fecha/dieta-tratamiento-insumo/cantidad/hora/corral por renglón/hoja.
+  La columna de rubro usa `components/CatalogoUnificadoSelect.tsx`: agrupa dietas,
+  tratamientos e insumos veterinarios con encabezado propio, filtra por uno o más tipos,
+  automachea el texto (dieta → tratamiento → insumo) y permite crear el faltante
+  (default dieta) abriendo `DietaFormModal` / `TratamientoModal` / `InsumoModal`
+  (sin permiso de escritura, tratamiento/insumo quedan temporales). Turno M/T →
+  09:00/15:00; "paso a corral N" rige filas siguientes. Por ahora sólo preview (sin
+  reconstrucción de lotes ni guardado).
   Filtros en una línea compacta; tabla **paginada a la altura de la pantalla** (sin scroll
   vertical: se mide la primera fila y se calcula cuántas entran) y las celdas
   Cantidad/Animales/Reparto muestran sólo totales como links con `DetallePopover` (el detalle

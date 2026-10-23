@@ -39,6 +39,12 @@ api.interceptors.request.use(
         config.headers.Authorization = `Bearer ${token}`
       }
 
+      // FormData (uploads): quitar el Content-Type JSON para que el navegador
+      // defina el multipart boundary correctamente.
+      if (config.data instanceof FormData) {
+        delete config.headers['Content-Type']
+      }
+
       // Empresa actual: el anfitrión/operario/cliente usa `currentEmpresaId`;
       // sys-admin puede elegir una empresa puntual con `adminEmpresaId`
       // (persistida por la UI, p.ej. para la sección Clientes).

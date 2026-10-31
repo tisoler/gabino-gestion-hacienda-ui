@@ -131,7 +131,7 @@ export function ImportarPlanillaModal({ onClose }: { onClose: () => void }) {
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-foreground/40 backdrop-blur-sm"
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
-      <div className="w-full max-w-4xl bg-card border border-border rounded-lg shadow-xl p-6 flex flex-col gap-3 max-h-[90vh] overflow-hidden">
+      <div className="w-full max-w-6xl bg-card border border-border rounded-lg shadow-xl p-6 flex flex-col gap-3 max-h-[90vh] overflow-hidden">
         <div className="flex items-center justify-between shrink-0">
           <h2 className="text-base font-semibold text-foreground">Importar planilla</h2>
           <button
@@ -184,9 +184,10 @@ export function ImportarPlanillaModal({ onClose }: { onClose: () => void }) {
             </p>
           ) : (
             <div className="border border-border rounded-md overflow-hidden">
-              <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_minmax(0,0.7fr)_minmax(0,1fr)_32px] gap-2 px-3 py-2 bg-muted/60 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,0.7fr)_minmax(0,1fr)_32px] gap-2 px-3 py-2 bg-muted/60 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                 <span>Fecha</span>
                 <span>Dieta / Trat. / Ins.</span>
+                <span>Detectado</span>
                 <span>Cantidad</span>
                 <span>Corral</span>
                 <span />
@@ -196,7 +197,7 @@ export function ImportarPlanillaModal({ onClose }: { onClose: () => void }) {
                   <div
                     key={f.key}
                     title={f.ref ? `Texto detectado: ${f.ref}` : undefined}
-                    className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_minmax(0,0.7fr)_minmax(0,1fr)_32px] gap-2 px-3 py-1.5 items-start"
+                    className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,0.7fr)_minmax(0,1fr)_32px] gap-2 px-3 py-1.5 items-start"
                   >
                     <input
                       type="date"
@@ -210,6 +211,12 @@ export function ImportarPlanillaModal({ onClose }: { onClose: () => void }) {
                       textoInicial={f.texto || undefined}
                       onChange={(v) => setFila(f.key, { sel: v })}
                     />
+                    <span
+                      title={f.texto ? `Texto detectado: ${f.texto}` : undefined}
+                      className="flex min-h-[34px] min-w-0 items-center truncate px-1 text-xs text-muted-foreground"
+                    >
+                      {f.texto || '—'}
+                    </span>
                     <NumeroInput
                       min={0}
                       step="0.01"

@@ -220,14 +220,19 @@ El lint del UI usa `eslint.config.js` (sin autofix en el script). No `any` nuevo
   item "archivo · pág. N")
   y botón "Importar Excel" (`components/ImportarExcelModal.tsx`: sube el .xlsx, elige hojas
   (con check "Todas") y agrega sus filas al preview; `POST /alimentaciones/importar-xlsx`):
-  preview editable fecha/dieta-tratamiento-insumo/cantidad/hora/corral por renglón/hoja.
+  preview editable fecha/dieta-tratamiento-insumo/detectado/cantidad/hora/corral por
+  renglón/hoja (la columna Detectado muestra el texto tal cual vino de la planilla/OCR).
   La columna de rubro usa `components/CatalogoUnificadoSelect.tsx`: agrupa dietas,
   tratamientos e insumos veterinarios con encabezado propio, filtra por uno o más tipos,
   automachea el texto (dieta → tratamiento → insumo) y permite crear el faltante
   (default dieta) abriendo `DietaFormModal` / `TratamientoModal` / `InsumoModal`
   (sin permiso de escritura, tratamiento/insumo quedan temporales). Turno M/T →
-  09:00/15:00; "paso a corral N" rige filas siguientes. Por ahora sólo preview (sin
-  reconstrucción de lotes ni guardado).
+  09:00/15:00; "paso a corral N" rige filas siguientes. El botón Guardar da de alta el
+  preview (`POST /alimentaciones/importar-guardar`, fila por fila con errores por fila):
+  dietas → alimentaciones del corral; tratamientos/insumos → aplicaciones a los animales
+  vivos del corral en cada instante (el insumo suelto usa el tratamiento global
+  "Aplicación insumo veterinario" con cantidad/unidad). Las filas vet exigen
+  escritura:veterinaria; al guardar revalida alimentaciones + balances vía `onGuardado`.
   Filtros en una línea compacta; tabla **paginada a la altura de la pantalla** (sin scroll
   vertical: se mide la primera fila y se calcula cuántas entran) y las celdas
   Cantidad/Animales/Reparto muestran sólo totales como links con `DetallePopover` (el detalle

@@ -529,7 +529,15 @@ export default function Alimentacion() {
 
       {importarOpen && <ImportarPlanillaModal onClose={() => setImportarOpen(false)} />}
 
-      {importarXlsxOpen && <ImportarExcelModal onClose={() => setImportarXlsxOpen(false)} />}
+      {importarXlsxOpen && (
+        <ImportarExcelModal
+          onClose={() => setImportarXlsxOpen(false)}
+          onGuardado={async () => {
+            await mutateAlimentaciones()
+            await revalidarBalances(mutateGlobal)
+          }}
+        />
+      )}
 
       {editando && (
         <AlimentarModal

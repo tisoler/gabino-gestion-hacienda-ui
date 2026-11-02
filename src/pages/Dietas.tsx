@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import useSWR, { useSWRConfig } from 'swr'
-import { AlertCircle, Loader2, Plus, Power, PowerOff, History, X } from 'lucide-react'
+import { AlertCircle, Check, Loader2, Pencil, Plus, Power, PowerOff, History, X } from 'lucide-react'
 import api, { fetcher } from '../lib/api'
 import { revalidarBalances } from '../lib/balance'
 import { useAuth } from '../contexts/auth-context'
@@ -35,6 +35,9 @@ export default function Dietas() {
   >(undefined)
   const [historialDe, setHistorialDe] = useState<DietaView | null>(null)
   const [error, setError] = useState('')
+  const [editandoNombreId, setEditandoNombreId] = useState<number | null>(null)
+  const [nombreEdit, setNombreEdit] = useState('')
+  const [guardandoNombre, setGuardandoNombre] = useState(false)
 
   // Empresas para que el sys-admin elija el alcance (Global o una empresa).
   const { data: empresas } = useSWR<{ id: number; nombre: string }[]>(
@@ -61,6 +64,30 @@ export default function Dietas() {
   const abrirNuevaVersion = (d: DietaView) => {
     setInicial({ nombre: d.nombre, insumos: d.insumos, idEmpresa: d.idEmpresa })
     setFormOpen(true)
+  }
+
+  const guardarNombre = async (d: DietaView) => {
+    const nombre = nombreEdit.trim()
+    if (!nombre) {
+      setError('El nombre no puede estar vacío.')
+      return
+    }
+    if (nombre.toLowerCase() === d.nombre.toLowerCase()) {
+      setEditandoNombreId(null)
+      return
+    }
+    setGuardandoNombre(true)
+    setError('')
+    try {
+      await api.patch(`/dietas/${d.id}`, { nombre })
+      setEditandoNombreId(null)
+      await mutate(listKey)
+    } catch (err) {
+      console.error(err)
+      setError(extractMsg(err, 'No se pudo renombrar la dieta.'))
+    } finally {
+      setGuardandoNombre(false)
+    }
   }
 
   const toggleActiva = async (d: DietaView) => {
@@ -131,18 +158,68 @@ export default function Dietas() {
                   className={`premium-card p-4 space-y-3 ${!d.activa ? 'opacity-70' : ''}`}
                 >
                   <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <h3 className="text-sm font-semibold text-foreground truncate">{d.nombre}</h3>
-                        {d.global && (
-                          <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-primary bg-primary-soft rounded-full px-1.5 py-0.5">
-                            Global
+                    <div className="min-w-0 flex-1">
+                      {editandoNombreId === d.id ? (
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            autoFocus
+                            type="text"
+                            value={nombreEdit}
+                            onChange={(e) => setNombreEdit(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') void guardarNombre(d)
+                              if (e.key === 'Escape') setEditandoNombreId(null)
+                            }}
+                            disabled={guardandoNombre}
+                            maxLength={100}
+                            className="min-w-0 flex-1 px-2 py-1 bg-background border border-border rounded-md text-sm font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-primary transition-colors"
+                          />
+                          <button
+                            onClick={() => void guardarNombre(d)}
+                            disabled={guardandoNombre}
+                            title="Guardar nombre"
+                            className="p-1.5 rounded-md text-success hover:bg-success-soft transition-colors disabled:opacity-50 cursor-pointer"
+                          >
+                            {guardandoNombre ? (
+                              <Loader2 className="size-3.5 animate-spin" strokeWidth={2} />
+                            ) : (
+                              <Check className="size-3.5" strokeWidth={2} />
+                            )}
+                          </button>
+                          <button
+                            onClick={() => setEditandoNombreId(null)}
+                            disabled={guardandoNombre}
+                            title="Cancelar (Esc)"
+                            className="p-1.5 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-50 cursor-pointer"
+                          >
+                            <X className="size-3.5" strokeWidth={2} />
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <h3 className="text-sm font-semibold text-foreground truncate">{d.nombre}</h3>
+                          {puedeGestionar(d) && (
+                            <button
+                              onClick={() => {
+                                setNombreEdit(d.nombre)
+                                setEditandoNombreId(d.id)
+                              }}
+                              title="Renombrar dieta"
+                              className="shrink-0 p-1 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors cursor-pointer"
+                            >
+                              <Pencil className="size-3.5" strokeWidth={2} />
+                            </button>
+                          )}
+                          {d.global && (
+                            <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-primary bg-primary-soft rounded-full px-1.5 py-0.5">
+                              Global
+                            </span>
+                          )}
+                          <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground bg-muted rounded-full px-1.5 py-0.5">
+                            v{d.version}
                           </span>
-                        )}
-                        <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground bg-muted rounded-full px-1.5 py-0.5">
-                          v{d.version}
-                        </span>
-                      </div>
+                        </div>
+                      )}
                       <p className="text-xs text-muted-foreground mt-0.5">
                         {d.activa ? 'Activa' : 'Inactiva'} · {fmtFecha(d.actualizadaEn)}
                       </p>

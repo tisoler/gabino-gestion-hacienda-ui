@@ -194,7 +194,8 @@ El lint del UI usa `eslint.config.js` (sin autofix en el script). No `any` nuevo
   el nuevo insumo trae el restante); si lo tipeado no existe, abre el `InsumoModal`
   compartido (nombre prefill, categoría fija sólo-lectura, alcance de la dieta): con
   `escritura:insumo` persiste por `POST /insumos`, si no queda local y el server lo crea al
-  guardar la dieta. Una dieta no se edita: se versiona (`POST /dietas`). **Alcance**: el sys-admin
+  guardar la dieta. Una dieta no se edita: se versiona (`POST /dietas`); el nombre sí se
+  renombra en la misma card (`PATCH /dietas/:id`, con unicidad por alcance). **Alcance**: el sys-admin
   elige Global o una empresa (`idEmpresa` null/número) y ve badge "Global"; una dieta global
   sólo la gestiona el admin (`puedeGestionar`) y sus insumos deben ser globales.
 - **Alimentación** (`pages/Alimentacion.tsx`, `components/AlimentarModal.tsx`, tipos en

@@ -67,12 +67,13 @@ export const TIPOS_MOVIMIENTO: Record<string, string> = {
 }
 
 /** Unidades admitidas para el precio de referencia de un insumo. */
-export const INSUMO_UNIDADES = ['kg', 'unidad', 'ml'] as const
+export const INSUMO_UNIDADES = ['cc', 'kg', 'ml', 'unidad'] as const
 
 export const INSUMO_UNIDAD_LABELS: Record<string, string> = {
   kg: 'kg',
   unidad: 'unidad',
   ml: 'ml',
+  cc: 'cc',
 }
 
 /**
